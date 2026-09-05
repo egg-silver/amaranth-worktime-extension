@@ -1,5 +1,6 @@
 {
   "manifest_version": 3,
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAu3Mg326AfTfq7Ea1DAE3fQHQTCnNJb7r+fvkUY4ww4jjxRLsofyc5lxv18J2gWsBgZhTK/JLUbpbXBHMrFJqS+zsXT1JUha79YFatrNsCaHm1hIbrfkCKplY12AEf0S5ngb5vEBM8LyHyDZ2psni9RKMcFHEwJEgfaSqHdXbPo7fo4jEagufF2OsMoBTFdKJkLfTMRDoxan7+pqqkVn5tfo8M+JnbejmJwr5eUHy1tAnE6OOScZLMYsr3ke3V1Gbd3D9KMO3KVjfdCg6lOk03upOzWWRYKQYZEyrRxl9GBY7IiiPBe2/S0tn/BpYN8+mDVBAdwRa+n2HKnvuVk/bYQIDAQAB",
   "name": "gw-worktime",
   "version": "1.1.0",
   "description": "아마란스 그룹웨어에 들어가지 않고 이번 달 근무시간과 퇴근 가능 시각을 확인하고, 새 알림을 받습니다.",
@@ -12,6 +13,7 @@
   ],
   "host_permissions": [
     "https://gw.goorm.io/*",
+    "https://api.github.com/repos/egg-silver/amaranth-worktime-extension/*",
     "https://raw.githubusercontent.com/egg-silver/amaranth-worktime-extension/*"
   ],
   "side_panel": {

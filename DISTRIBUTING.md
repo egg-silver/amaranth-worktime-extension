@@ -9,15 +9,16 @@
 
 크롬 웹스토어에 올리지 않는 한 이 방식만 가능하다.
 
-## 나눠주기 전에 뺄 것
+## 실행 파일만 압축하기
 
 ```bash
-zip -r gw-worktime.zip . \
-  -x '.claude/*' '.superpowers/*' 'node_modules/*' '.git/*' '.DS_Store' 'docs/*'
+npm run package
 ```
 
-- `.claude/` — 만들 때 쓴 디자인 스킬. 확장 동작과 무관하고 3MB가 넘는다
-- `.superpowers/`, `docs/` — 설계 과정 기록. 필요하면 같이 줘도 된다
+`dist/amaranth-worktime-extension.zip`을 생성한다. 압축을 풀면 `amaranth-worktime-extension` 폴더가 생기고 루트에 `manifest.json`이 나온다.
+확장 실행에 필요한 루트 파일과 `lib/`, `fonts/`, `icons/`만 포함한다.
+문서, 테스트, 개발 도구, Git 정보, `package.json`은 제외한다.
+업데이터와 패키징 명령은 같은 파일 허용 목록을 사용한다. ZIP 이름에 버전을 넣지 않아 압축을 풀 때 폴더 이름이 버전별로 바뀌지 않는다.
 
 ## 개인 정보
 
@@ -25,7 +26,7 @@ zip -r gw-worktime.zip . \
 
 각자 자기 브라우저의 그룹웨어 쿠키로만 동작하므로, 남의 근태를 볼 수 없고
 내 정보가 남에게 가지도 않는다. 모든 데이터는 각자 브라우저 안에만 저장된다
-(`chrome.storage.local`). 외부로 나가는 통신은 `gw.goorm.io` 하나뿐이다.
+(`chrome.storage.local`). 근태 조회는 `gw.goorm.io`로 통신하고, 버전 확인과 업데이트 다운로드에는 GitHub API 및 raw 파일 서버를 사용한다.
 
 사번은 설치 후 그룹웨어에 접속할 때 **각자의 브라우저에서** 읽어 저장된다.
 
@@ -37,3 +38,10 @@ zip -r gw-worktime.zip . \
 
 그룹웨어가 서명 방식이나 응답 형식을 바꾸면 동작이 멈춘다. 그때는 팝업의
 [설정] → **연결 진단**이 어느 단계에서 막혔는지 알려준다.
+
+## 업데이트 배포
+
+`manifest.json`의 버전을 올리고, 해당 커밋을 가리키는 태그로 GitHub 공개 릴리스를 게시한다.
+폴더 업데이트는 최신 공개 릴리스의 태그가 가리키는 소스에서 루트 실행 파일과 `lib/`, `fonts/`, `icons/`를 받는다.
+새 루트 실행 파일을 추가하면 `lib/folder-update.js`의 배포 파일 허용 목록도 갱신해야 한다.
+다운로드·교체·폴더 저장 UI는 `update.html`, `update.js`에 있다.

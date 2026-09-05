@@ -14,6 +14,7 @@ import {
   LUNCH_END,
 } from './lib/calc.js';
 import { isUnread, countUnread, parseCreateDate, alertTitle } from './lib/alerts.js';
+import { savedFolder } from './lib/folder-update.js';
 
 const GW_URL = 'https://gw.goorm.io/#/';
 const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
@@ -1057,7 +1058,7 @@ function showTab(name) {
   const settingsBtn = $('open-settings');
   const inSettings = name === 'settings';
   settingsBtn.classList.toggle('is-on', inSettings);
-  settingsBtn.textContent = inSettings ? '설정 닫기' : '설정';
+  $('settings-label').textContent = inSettings ? '설정 닫기' : '설정';
 }
 
 function setupTabs() {
@@ -1107,11 +1108,9 @@ function renderCredits() {
 }
 
 // ── 버전 확인 ────────────────────────────────────────
-// 웹스토어 확장이 아니라 크롬이 알아서 갱신해 주지 않는다. 알려만 준다.
-let updateInfo = null;
+// 새 버전 확인 후 사용자 요청으로 저장된 설치 폴더에 적용한다.
 
 function renderUpdate(info) {
-  updateInfo = info;
   const tag = $('ver-tag');
   const note = $('ver-note');
   const get = $('ver-get');
@@ -1133,7 +1132,7 @@ function renderUpdate(info) {
   if (info.behind) {
     tag.classList.add('is-behind');
     tag.textContent = `새 버전 v${info.latest}`;
-    note.textContent = '받아서 압축을 푼 뒤, chrome://extensions 에서 이 확장의 새로고침을 누르면 적용돼요.';
+    note.textContent = '업데이트를 누르면 저장된 설치 폴더에 적용하고 자동으로 다시 로드합니다. 폴더가 없으면 먼저 지정합니다.';
     get.hidden = false;
     return;
   }
@@ -1187,6 +1186,7 @@ function renderAlertBadge(unread) {
   const badge = $('alert-badge');
   badge.hidden = unread <= 0;
   badge.textContent = unread > 99 ? '99+' : String(unread);
+  $('settings-alert-icon').hidden = unread <= 0;
 }
 
 function renderAlertPoll(lastPoll) {
@@ -1527,9 +1527,15 @@ $('notice-action').addEventListener('click', openGroupware);
 $('alert-notice-action').addEventListener('click', openGroupware);
 renderCredits();
 
+$('ver-folder').addEventListener('click', () => {
+  chrome.tabs.create({ url: chrome.runtime.getURL('update.html') });
+});
+savedFolder()
+  .then((handle) => { $('ver-folder-check').hidden = !handle; })
+  .catch(() => { $('ver-folder-check').hidden = true; });
 $('ver-check').addEventListener('click', () => loadUpdate(true));
 $('ver-get').addEventListener('click', () => {
-  chrome.tabs.create({ url: updateInfo?.url || 'https://github.com/egg-silver/amaranth-worktime-extension/releases/latest' });
+  chrome.tabs.create({ url: chrome.runtime.getURL('update.html?action=install') });
 });
 
 $('open-settings').addEventListener('click', () => {

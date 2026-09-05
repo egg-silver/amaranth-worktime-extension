@@ -103,7 +103,9 @@
           <p class="ver-note" id="ver-note">최신인지 확인하는 중…</p>
           <div class="ver-actions">
             <button id="ver-check" class="btn btn-quiet" type="button">다시 확인</button>
-            <button id="ver-get" class="btn" type="button" hidden>받으러 가기</button>
+            <button id="ver-folder" class="btn" type="button">폴더 설정</button>
+            <span id="ver-folder-check" class="folder-check" title="폴더 설정됨" aria-label="폴더 설정됨" hidden>✓</span>
+            <button id="ver-get" class="btn" type="button" hidden>업데이트</button>
           </div>
         </div>
 
@@ -222,7 +224,7 @@
       <span id="fetched">-</span>
       <span class="foot-actions">
         <button id="refresh" class="link" title="새로고침"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3v6h-6"/></svg><span id="refresh-text">새로고침</span></button>
-        <button id="open-settings" class="link" title="설정">설정</button>
+        <button id="open-settings" class="link" title="설정"><span id="settings-label">설정</span><span id="settings-alert-icon" class="settings-alert-icon" aria-label="새 알림" role="img" hidden></span></button>
         <button id="open-gw" class="link">그룹웨어<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg></button>
       </span>
     </footer>

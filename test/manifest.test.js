@@ -22,7 +22,7 @@ const root = new URL('../', import.meta.url);
 
 /** 확장이 싣는 모든 소스. lib/ 도 빠뜨리면 안 된다 (chrome.cookies 가 여기 있다). */
 function sourceFiles() {
-  const files = ['background.js', 'popup.js', 'content.js'];
+  const files = ['background.js', 'popup.js', 'content.js', 'update.js'];
   for (const f of fs.readdirSync(new URL('lib/', root))) {
     if (f.endsWith('.js')) files.push(path.join('lib', f));
   }
