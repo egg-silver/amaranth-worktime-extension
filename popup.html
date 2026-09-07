@@ -49,11 +49,18 @@
               <dd id="today-remaining">-</dd>
             </div>
             <div class="row"><dt>이번 달 초과·부족</dt><dd id="balance">-</dd></div>
+            <div class="row"><dt>하루 권장 평균 <span class="hint">남은 날 기준</span></dt><dd id="rec-avg">-</dd></div>
             <div class="row"><dt>이번 달 부족한 시간</dt><dd id="shortage">-</dd></div>
             <div class="row"><dt>남은 근무일</dt><dd id="remaining">-</dd></div>
           </dl>
 
-          <p class="note">오늘 근무 시간이 포함된 정보예요.</p>
+          <label class="toggle-row">
+            <span class="toggle-text">오늘 근무 시간 포함</span>
+            <span class="switch">
+              <input type="checkbox" id="include-today" checked />
+              <span class="switch-track"><span class="switch-thumb"></span></span>
+            </span>
+          </label>
           <div id="warn" class="warn" hidden></div>
         </div>
       </section>
@@ -76,23 +83,11 @@
 
         <hr class="sep" />
 
-        <div id="work-rule" class="rule" hidden>
-          <p class="label">적용된 근무규칙</p>
-          <dl class="rows">
-            <div class="row"><dt>규칙 이름</dt><dd id="rule-name">-</dd></div>
-            <div class="row"><dt>기본 근무시간</dt><dd id="rule-standard">-</dd></div>
-          </dl>
+        <div class="my-empcd">
+          <span class="my-empcd-label">내 사번</span>
+          <span id="my-empcd" class="my-empcd-val">-</span>
+          <button id="copy-empcd" class="btn btn-quiet" type="button">복사</button>
         </div>
-
-        <div class="field">
-          <span>하루 근무시간 (시간)</span>
-          <div class="field-row">
-            <input id="daily-hours" type="number" min="1" max="24" step="0.5" />
-            <button id="save-settings" class="btn">저장</button>
-          </div>
-        </div>
-        <p class="hint">기본은 8시간이에요. 다르게 계산할 때만 바꾸세요.</p>
-        <p id="settings-saved" class="hint" hidden>저장했어요.</p>
 
         <hr class="sep" />
 
@@ -286,7 +281,8 @@
         <div class="crew-body">
           <section class="crew-sec">
             <p class="crew-sec-title">내 공유 코드</p>
-            <p class="crew-sec-hint">이 코드를 팀원에게 보내면, 그 사람 확장에 내 출근 시간이 보여요.</p>
+            <p class="crew-sec-hint" id="crew-code-hint">이 코드를 팀원에게 보내면, 그 사람 확장에 내 출근 시간이 보여요.</p>
+            <p class="crew-code-warn" id="crew-code-warn" hidden>내 이름이 아직 안 잡혔어요. 팀근태 탭을 열거나 그룹웨어에 접속하면 이름이 채워져요.</p>
             <div class="crew-code">
               <input id="crew-mycode" type="text" readonly value="불러오는 중…" />
               <button id="crew-copy" class="btn" type="button">복사</button>

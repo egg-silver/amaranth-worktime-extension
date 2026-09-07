@@ -179,6 +179,26 @@ function todayStamp() {
 }
 
 /** 등록된 팀원(+본인)의 오늘 출근 현황. */
+/**
+ * 본인 이름. content.js 가 그룹웨어에서 읽어 두지만, 못 읽었을 때를 대비해
+ * 조직도(roster)에서 empSeq 로 찾아 채우고 저장한다. 그래서 이름은 자동으로 잡힌다.
+ */
+async function resolveMyName(identity) {
+  if (identity.empName && identity.empName !== '나') return identity.empName;
+  if (!identity.empSeq) return identity.empName || '나';
+  try {
+    const { people } = await loadRoster();
+    const me = (people || []).find((p) => String(p.empSeq) === String(identity.empSeq));
+    if (me?.person) {
+      await chrome.storage.local.set({ [IDENTITY_KEY]: { ...identity, empName: me.person } });
+      return me.person;
+    }
+  } catch (err) {
+    /* 조직도를 못 받아도 이름만 못 채울 뿐이다 */
+  }
+  return identity.empName || '나';
+}
+
 async function loadTeamAttendance() {
   const identity = await getIdentity();
   if (!identity?.empCd) {
@@ -189,7 +209,7 @@ async function loadTeamAttendance() {
   const members = Array.isArray(saved) ? saved : [];
 
   // 본인을 맨 앞에. 등록 목록에 본인이 또 있으면 뺀다.
-  const me = { name: identity.empName || '나', empCd: String(identity.empCd), isMe: true };
+  const me = { name: await resolveMyName(identity), empCd: String(identity.empCd), isMe: true };
   const others = members.filter((m) => String(m.empCd) !== me.empCd);
   const all = [me, ...others];
 
@@ -646,7 +666,7 @@ ensureUpdateAlarm();
 // 팝업이 "지금 돌고 있는 서비스 워커가 최신인지" 확인하는 용도.
 // 팝업 파일은 열 때마다 다시 읽히지만 서비스 워커는 확장을 새로고침해야 바뀌기 때문에,
 // 이 응답이 없으면 예전 워커가 남아 있다는 뜻이다.
-const BUILD = 15;
+const BUILD = 18;
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type === 'ping') {
@@ -728,7 +748,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       .catch((err) => sendResponse({ ok: false, message: err?.message || String(err) }));
     return true;
   }
-  if (message?.type === 'setIdentity' && message.identity?.empCd) {
+  if (message?.type === 'setIdentity' && (message.identity?.empCd || message.identity?.empName)) {
     // 그룹웨어에서 읽어 온 값이 우선이지만, 사용자가 직접 넣은 사번도 지우지 않는다.
     getIdentity()
       .then((current) => chrome.storage.local.set({ [IDENTITY_KEY]: { ...current, ...message.identity } }))

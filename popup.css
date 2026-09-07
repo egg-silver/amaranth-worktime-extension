@@ -708,3 +708,22 @@ body.update-page { width: auto; min-width: 0; }
 .settings-head { display: flex; align-items: center; justify-content: space-between; gap: var(--size-100); }
 .settings-head .label { margin: 0; }
 .settings-head .btn { flex: none; }
+
+/* 설정: 내 정보 */
+.my-empcd { display: flex; align-items: center; gap: var(--size-100); margin-top: var(--size-100); }
+.my-empcd-label { font-size: var(--font-size-050); font-weight: var(--font-weight-500); color: var(--fg-2); }
+.my-empcd-val { font-size: var(--font-size-075); font-weight: var(--font-weight-700); font-variant-numeric: tabular-nums; color: var(--fg); }
+.my-empcd .btn { margin-left: auto; flex: none; height: 28px; padding: 0 var(--size-125); }
+
+/* 오늘 포함 토글 */
+.toggle-row { display: flex; align-items: center; justify-content: space-between; gap: var(--size-100); margin: 10px 2px 0; cursor: pointer; }
+.toggle-text { font-size: var(--font-size-050); color: var(--muted-fg); }
+.switch { position: relative; flex: none; }
+.switch input { position: absolute; opacity: 0; width: 0; height: 0; }
+.switch-track { display: block; width: 36px; height: 20px; border-radius: 999px; background: var(--gray-200); transition: background var(--t); }
+.switch-thumb { position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.2); transition: transform var(--t); }
+.switch input:checked + .switch-track { background: var(--primary); }
+.switch input:checked + .switch-track .switch-thumb { transform: translateX(16px); }
+.switch input:focus-visible + .switch-track { box-shadow: 0 0 0 3px rgba(42,114,229,.25); }
+
+.crew-code-warn { margin: 0; font-size: var(--font-size-050); color: var(--accent-fg); line-height: 1.5; }

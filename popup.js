@@ -20,12 +20,14 @@ import { encodeMember, parseMemberInput, isValidEmpCd } from './lib/team-code.js
 const GW_URL = 'https://gw.goorm.io/#/';
 const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
 const VIEW_KEY = 'heroView'; // HERO_VIEWS 중 하나
+const INCLUDE_TODAY_KEY = 'includeToday';
 
 const $ = (id) => document.getElementById(id);
 
 let current = null; // 마지막으로 렌더한 status
 let currentFetchedAt = null;
 let heroView = 'today';
+let includeToday = true; // 오늘 근무 시간을 이번 달 계산에 포함할지
 let tickTimer = null;
 // 이번 달 'yyyyMM'. 다음 달로 넘어가지 못하게 막는 기준.
 // 서버 응답이 실패해도 [기록] 탭은 쓸 수 있어야 하므로 로컬 시계로 먼저 채운다.
@@ -144,7 +146,19 @@ function heroContent(status, view) {
   };
 }
 
-function renderHero(status) {
+/** 토글이 '오늘 제외' 면 이번 달 누적·부족·진도를 오늘 뺀 값으로 바꿔 준다. */
+function effectiveStatus(status) {
+  if (includeToday || !status) return status;
+  return {
+    ...status,
+    accumulated: status.accumulatedExclToday ?? status.accumulated,
+    shortage: status.shortageExclToday ?? status.shortage,
+    progressRatio: status.progressRatioExclToday ?? status.progressRatio,
+  };
+}
+
+function renderHero(rawStatus) {
+  const status = effectiveStatus(rawStatus);
   const view = HERO_VIEWS.includes(heroView) ? heroView : HERO_VIEWS[0];
   const c = heroContent(status, view);
 
@@ -201,7 +215,13 @@ function renderToday(rawStatus, fetchedAt, staleNote) {
       rounded === 0 ? '0분' : `${rounded > 0 ? '+' : '−'}${formatDuration(Math.abs(rounded))}`;
   }
 
-  $('shortage').textContent = status.shortage > 0 ? formatDuration(status.shortage) : '다 채웠어요';
+  // 부족분을 남은 근무일로 나눈 하루 권장 평균. 이만큼씩 채우면 소정에 맞는다.
+  $('rec-avg').textContent =
+    status.remainingWorkDays > 0 && status.todayTarget > 0
+      ? formatDuration(status.todayTarget)
+      : '여유 있어요';
+  const effShortage = effectiveStatus(status).shortage;
+  $('shortage').textContent = effShortage > 0 ? formatDuration(effShortage) : '다 채웠어요';
   $('remaining').textContent =
     status.monthWorkDays != null
       ? `${status.remainingWorkDays}/${status.monthWorkDays}일`
@@ -224,15 +244,6 @@ function renderToday(rawStatus, fetchedAt, staleNote) {
     const body = document.createElement('span');
     body.innerHTML = notes.join('<br>');
     warn.appendChild(body);
-  }
-
-  const rule = status.workRule;
-  $('work-rule').hidden = !rule;
-  if (rule) {
-    $('rule-name').textContent = rule.typeName && rule.typeName !== rule.name
-      ? `${rule.name} (${rule.typeName})`
-      : rule.name || '-';
-    $('rule-standard').textContent = formatDuration(rule.standardMinutes);
   }
 
   $('fetched').textContent = relativeTime(currentFetchedAt);
@@ -530,7 +541,7 @@ function icon(name) {
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // background.js 의 BUILD 와 같은 값이어야 한다. 파일을 고칠 때 함께 올린다.
-const EXPECTED_BUILD = 15;
+const EXPECTED_BUILD = 18;
 const STALE_WORKER_MESSAGE =
   '확장을 새로고침해 주세요. chrome://extensions 에서 gw-worktime 카드의 ↻ 를 누르면 됩니다. ' +
   '(팝업은 최신인데 백그라운드가 예전 버전으로 남아 있어요)';
@@ -1282,7 +1293,11 @@ function openCrewModal(open) {
   box.hidden = !show;
   if (!show) return;
   crewMsg('', false);
-  $('crew-mycode').value = crewMe ? encodeMember(crewMe.name, crewMe.empCd) : '먼저 팀출근 탭을 한 번 열어 주세요.';
+  // 이름이 아직 안 잡혔으면(=사번과 같거나 '나') 코드에 이름이 안 들어간다. 경고를 띄운다.
+  const nameReady = crewMe && crewMe.name && crewMe.name !== '나' && crewMe.name !== crewMe.empCd;
+  $('crew-mycode').value = crewMe ? encodeMember(crewMe.name, crewMe.empCd) : '먼저 팀근태 탭을 한 번 열어 주세요.';
+  $('crew-code-warn').hidden = !crewMe || nameReady;
+  $('crew-code-hint').hidden = !!crewMe && !nameReady;
   renderCrewReg();
 }
 
@@ -1554,22 +1569,10 @@ async function loadAlerts({ force = false } = {}) {
 }
 
 async function loadSettingsForm() {
-  const stored = (await chrome.storage.local.get(['settings', 'identity'])) || {};
-  const minutes = stored.settings?.dailyMinutes ?? STANDARD_MINUTES;
-  $('daily-hours').value = String(minutes / 60);
-  if (stored.identity?.empCd) $('emp-code').value = stored.identity.empCd;
-}
-
-async function saveSettings() {
-  const hours = Number($('daily-hours').value);
-  if (!Number.isFinite(hours) || hours <= 0 || hours > 24) return;
-  await chrome.runtime.sendMessage({
-    type: 'setSettings',
-    settings: { dailyMinutes: Math.round(hours * 60) },
-  });
-  $('settings-saved').hidden = false;
-  setTimeout(() => ($('settings-saved').hidden = true), 2000);
-  load(); // 새 기준으로 다시 계산
+  const stored = (await chrome.storage.local.get('identity')) || {};
+  const id = stored.identity || {};
+  if (id.empCd) $('emp-code').value = id.empCd;
+  $('my-empcd').textContent = id.empCd || '그룹웨어 접속 후 표시돼요';
 }
 
 async function load({ force = false } = {}) {
@@ -1758,10 +1761,21 @@ $('ver-get').addEventListener('click', () => {
 
 $('open-settings').addEventListener('click', () => {
   const opening = $('panel-settings').hidden;
-  if (opening) loadUpdate();
+  if (opening) {
+    loadUpdate();
+    loadSettingsForm(); // 열 때마다 최신 identity 로 내 사번을 다시 채운다
+  }
   return showTab(opening ? 'settings' : 'today');
 });
-$('save-settings').addEventListener('click', saveSettings);
+$('copy-empcd').addEventListener('click', async () => {
+  const cd = $('my-empcd').textContent;
+  if (!/^\d+$/.test(cd)) return;
+  try {
+    await navigator.clipboard.writeText(cd);
+    const b = $('copy-empcd'); b.textContent = '복사됨';
+    setTimeout(() => (b.textContent = '복사'), 1200);
+  } catch { /* 무시 */ }
+});
 $('save-emp').addEventListener('click', saveEmpCode);
 
 chrome.storage.local.get([DEPT_KEY, GROUP_KEY, CREW_KEY]).then((stored) => {
@@ -1773,6 +1787,18 @@ chrome.storage.local.get([DEPT_KEY, GROUP_KEY, CREW_KEY]).then((stored) => {
 chrome.storage.local.get(VIEW_KEY).then(({ [VIEW_KEY]: saved }) => {
   if (HERO_VIEWS.includes(saved)) heroView = saved;
   if (current) renderHero(current);
+});
+
+chrome.storage.local.get(INCLUDE_TODAY_KEY).then(({ [INCLUDE_TODAY_KEY]: saved }) => {
+  if (typeof saved === 'boolean') includeToday = saved;
+  $('include-today').checked = includeToday;
+  if (current) renderToday(current);
+});
+
+$('include-today').addEventListener('change', (e) => {
+  includeToday = e.target.checked;
+  chrome.storage.local.set({ [INCLUDE_TODAY_KEY]: includeToday });
+  if (current) renderToday(current);
 });
 
 loadSettingsForm();
