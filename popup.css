@@ -322,6 +322,7 @@ main { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
 .foot-actions { display: flex; gap: 2px; }
 .link { display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0px 7px; border: 0px; border-radius: var(--r-sm); background: none; font-family: inherit; font-size: var(--font-size-050); font-weight: var(--font-weight-500); color: var(--muted-fg); transition: color var(--t), background var(--t); }
 .link .icon { width: 12px; height: 12px; }
+.settings-alert-icon { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--primary); }
 .link:hover:not(:disabled) { color: var(--fg); background: var(--gray-050); }
 .link.is-on { color: var(--primary-strong); background: var(--primary-soft); }
 .link:disabled { opacity: 0.4; cursor: not-allowed; }
@@ -567,3 +568,10 @@ main { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
 .ver-note { margin: var(--size-075) 0 0; font-size: var(--font-size-050); color: var(--faint-fg); line-height: 1.55; }
 .ver-actions { display: flex; gap: var(--size-100); margin-top: var(--size-125); }
 .ver-actions .btn { flex: 1; justify-content: center; }
+.folder-check { align-self: center; color: var(--green-600); font-size: var(--font-size-100); font-weight: var(--font-weight-700); }
+
+/* Dedicated updater tab stays open while the popup loses focus. */
+body.update-page { width: auto; min-width: 0; }
+.update-main { max-width: 640px; margin: 40px auto; padding: 24px; }
+.update-main p { margin: 16px 0; line-height: 1.6; word-break: keep-all; overflow-wrap: anywhere; }
+.update-main .ver-actions, .version .ver-actions { flex-wrap: wrap; }

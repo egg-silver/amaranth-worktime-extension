@@ -1,10 +1,11 @@
 {
   "name": "gw-worktime",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "private": true,
   "type": "module",
   "description": "아마란스 그룹웨어 근무시간 크롬 확장 (빌드 없음 · 테스트용 package.json)",
   "scripts": {
-    "test": "node --test 'test/*.test.js'"
+    "test": "node --test 'test/*.test.js'",
+    "package": "node scripts/package.mjs"
   }
 }
