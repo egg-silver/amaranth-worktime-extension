@@ -8,6 +8,7 @@ import {
   alertTitle,
   readStamp,
   markLocallyRead,
+  markAllLocallyRead,
   overlayLocalReads,
 } from "../lib/alerts.js";
 
@@ -93,4 +94,17 @@ test("서버가 아직 안 읽음이어도 방금 읽은 id 는 유지한다", (
   assert.equal(isUnread(alerts[0]), false);
   assert.equal(isUnread(alerts[1]), false);
   assert.equal(isUnread(alerts[2]), true);
+});
+
+test("모두 읽음은 id 없는 항목까지 읽음으로 바꾼다", () => {
+  const alerts = [
+    { alertId: "a", readDate: "" },
+    { readDate: "" },
+    { alertId: "b", readDate: "20260805120305" },
+  ];
+  const next = markAllLocallyRead(alerts, "20260805120400");
+  assert.equal(isUnread(next[0]), false);
+  assert.equal(isUnread(next[1]), false);
+  assert.equal(next[2].readDate, "20260805120305");
+  assert.equal(alerts[0].readDate, "");
 });

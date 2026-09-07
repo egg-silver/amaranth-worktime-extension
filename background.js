@@ -13,6 +13,7 @@ import {
   fetchRoster,
   fetchTeamAttendance,
   markAlertsRead,
+  markAllAlertsRead,
   AuthError,
 } from "./lib/api.js";
 import {
@@ -21,6 +22,7 @@ import {
   alertContent,
   countUnread,
   overlayLocalReads,
+  markAllLocallyRead,
 } from "./lib/alerts.js";
 import {
   fetchLatestVersion,
@@ -247,7 +249,7 @@ async function resolveMyName(identity) {
       });
       return me.person;
     }
-  } catch (err) {
+  } catch {
     /* 조직도를 못 받아도 이름만 못 채울 뿐이다 */
   }
   return identity.empName || "나";
@@ -477,6 +479,7 @@ const LAST_POLL_KEY = "lastAlertPoll"; // storage.session — 팝업에 보여�
 const COMPANY_INFO_KEY = "companyInfo"; // storage.session — 읽음 처리에 필요한 회사 정보
 const ALERTS_CACHE_KEY = "lastAlerts"; // storage.session — 팝업이 바로 그릴 마지막 목록
 const LOCAL_READ_KEY = "locallyReadAlertIds"; // storage.session — 서버보다 먼저 읽음 표시한 id
+const LOCAL_READ_ALL_KEY = "locallyReadAll"; // storage.session — 모두 읽음 직후 서버가 따라잡을 때까지
 
 async function getSession(key, fallback) {
   const stored = await chrome.storage.session.get(key);
@@ -574,17 +577,40 @@ async function applyLocalRead(ids) {
   await setUnreadDot(countUnread(alerts));
 }
 
+async function applyLocalReadAll() {
+  const cached = await getSession(ALERTS_CACHE_KEY, null);
+  const next = { [LOCAL_READ_KEY]: [], [LOCAL_READ_ALL_KEY]: true };
+  if (cached?.alerts) {
+    next[ALERTS_CACHE_KEY] = {
+      ...cached,
+      alerts: markAllLocallyRead(cached.alerts),
+    };
+  }
+  await chrome.storage.session.set(next);
+  await setUnreadDot(0);
+}
+
 async function pollAlerts() {
   try {
     const credentials = await readCredentials();
     const fetched = await fetchAlerts(credentials, {
       pageSize: ALERT_PAGE_SIZE,
     });
-    const kept = await getSession(LOCAL_READ_KEY, []);
-    const { alerts, pending } = overlayLocalReads(
-      fetched.alerts,
-      Array.isArray(kept) ? kept : [],
-    );
+    const readAll = await getSession(LOCAL_READ_ALL_KEY, false);
+    let alerts;
+    let pending;
+    if (readAll) {
+      const caughtUp = countUnread(fetched.alerts) === 0;
+      alerts = markAllLocallyRead(fetched.alerts);
+      pending = [];
+      await chrome.storage.session.set({ [LOCAL_READ_ALL_KEY]: !caughtUp });
+    } else {
+      const kept = await getSession(LOCAL_READ_KEY, []);
+      ({ alerts, pending } = overlayLocalReads(
+        fetched.alerts,
+        Array.isArray(kept) ? kept : [],
+      ));
+    }
     const { moreYn } = fetched;
 
     await chrome.storage.session.set({
@@ -652,7 +678,11 @@ async function pollAlerts() {
   } catch (err) {
     // 로그아웃 상태는 정상이다. 폴링을 멈추지 않고 다음 주기에 다시 시도한다.
     await setUnreadDot(0);
-    await chrome.storage.session.remove(ALERTS_CACHE_KEY);
+    await chrome.storage.session.remove([
+      ALERTS_CACHE_KEY,
+      LOCAL_READ_KEY,
+      LOCAL_READ_ALL_KEY,
+    ]);
     return recordPoll({
       ok: false,
       reason: err instanceof AuthError ? "auth" : "error",
@@ -711,6 +741,26 @@ async function markRead(alertIds) {
   // 팝업이 열린 채로도 바로 보이게 캐시를 먼저 고치고, 목록 재조회는 곁다리다.
   try {
     await applyLocalRead(ids);
+  } catch {
+    // 캐시 반영 실패는 읽음 처리 성공을 뒤집지 않는다.
+  }
+  try {
+    await pollAlerts();
+  } catch {
+    return { ok: true, staleList: true };
+  }
+  return { ok: true };
+}
+
+async function markAllRead() {
+  try {
+    const credentials = await readCredentials();
+    await markAllAlertsRead(credentials);
+  } catch (err) {
+    return { ok: false, message: err?.message || String(err) };
+  }
+  try {
+    await applyLocalReadAll();
   } catch {
     // 캐시 반영 실패는 읽음 처리 성공을 뒤집지 않는다.
   }
@@ -842,7 +892,7 @@ ensureUpdateAlarm();
 // 팝업이 "지금 돌고 있는 서비스 워커가 최신인지" 확인하는 용도.
 // 팝업 파일은 열 때마다 다시 읽히지만 서비스 워커는 확장을 새로고침해야 바뀌기 때문에,
 // 이 응답이 없으면 예전 워커가 남아 있다는 뜻이다.
-const BUILD = 19;
+const BUILD = 20;
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type === "ping") {
@@ -911,6 +961,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
   if (message?.type === "markAlertsRead" && Array.isArray(message.alertIds)) {
     markRead(message.alertIds).then(sendResponse);
+    return true;
+  }
+  if (message?.type === "markAllAlertsRead") {
+    markAllRead().then(sendResponse);
     return true;
   }
   // 창을 여는 순간 팝업이 닫히므로 읽음 처리까지 여기서 한다.

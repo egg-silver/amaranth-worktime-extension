@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 // lib/api.js 는 모듈 최상단에서 chrome 을 쓰지 않지만, 안전하게 최소 스텁을 둔다.
 globalThis.chrome ??= { cookies: { get: async () => null } };
 
-const { fetchCompanyInfo, markAlertsRead } = await import('../lib/api.js');
+const { fetchCompanyInfo, markAlertsRead, markAllAlertsRead } = await import('../lib/api.js');
 
 const credentials = { token: 'grp|2073|secret', signKey: 'k' };
 
@@ -72,4 +72,30 @@ test('읽음 처리는 event02A03 에 alertIds 를 담아 보낸다', async () =
     header: { groupSeq: 'grp', empSeq: '2073', pid: '', tid: '' },
     body: { companyInfo: { compSeq: '1000', bizSeq: '1000' }, alertIds: ['id-1', 'id-2'] },
   });
+});
+
+test('모두 읽음은 event02A04 다음 event02A12 를 보낸다', async () => {
+  const calls = stubFetch(() => ({ json: { resultCode: 0, resultData: { total: 0, failed: 0 } } }));
+  await markAllAlertsRead(credentials);
+
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0].url, 'https://gw.goorm.io/event/event02A04');
+  assert.deepEqual(JSON.parse(calls[0].init.body), {
+    header: { groupSeq: 'grp', empSeq: '2073' },
+    body: { mentionYn: 'ALERT', eventType: '' },
+  });
+  assert.equal(calls[1].url, 'https://gw.goorm.io/event/event02A12');
+  assert.deepEqual(JSON.parse(calls[1].init.body), {
+    header: { groupSeq: 'grp', empSeq: '2073' },
+    body: { eventType: '' },
+  });
+  assert.equal(calls[0].init.credentials, 'include');
+  assert.equal(calls[1].init.credentials, 'include');
+});
+
+test('모두 읽음은 첫 호출이 실패하면 두 번째를 보내지 않는다', async () => {
+  const calls = stubFetch(() => ({ json: { resultCode: 1, resultMsg: '실패' } }));
+  await assert.rejects(() => markAllAlertsRead(credentials), /실패/);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, 'https://gw.goorm.io/event/event02A04');
 });

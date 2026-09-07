@@ -331,8 +331,11 @@ main { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
 .link:disabled { opacity: 0.4; cursor: not-allowed; }
 /* 알림 탭 */
 .tab-badge { display: inline-block; min-width: 16px; height: 16px; margin-left: 4px; padding: 0 5px; border-radius: var(--border-radius-full); background: var(--danger); color: #fff; font-size: var(--font-size-050); font-weight: var(--font-weight-700); line-height: 16px; text-align: center; vertical-align: 1px; }
-.alerts-head { margin-top: 0; }
+.alerts-head { margin-top: 0; align-items: center; }
+.alerts-actions { display: flex; align-items: center; gap: 8px; }
 .alert-count { font-size: var(--font-size-050); font-weight: var(--font-weight-500); color: var(--faint-fg); }
+.alerts-head .text-btn { padding: 2px 8px; }
+.alerts-head .text-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 .alert-list { margin: 0; padding: 0 12px; list-style: none; border: 1px solid var(--border); border-radius: var(--r); background: var(--card); }
 .alert-list li { display: flex; align-items: flex-start; gap: 8px; padding: 10px 0; border-bottom: 1px solid var(--border); }
 .alert-list li:last-child { border-bottom: 0; }

@@ -19,6 +19,7 @@ import {
   parseCreateDate,
   alertTitle,
   markLocallyRead,
+  markAllLocallyRead,
 } from "./lib/alerts.js";
 import { savedFolder } from "./lib/folder-update.js";
 import {
@@ -583,7 +584,7 @@ function icon(name) {
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // background.js 의 BUILD 와 같은 값이어야 한다. 파일을 고칠 때 함께 올린다.
-const EXPECTED_BUILD = 19;
+const EXPECTED_BUILD = 20;
 const STALE_WORKER_MESSAGE =
   "확장을 새로고침해 주세요. chrome://extensions 에서 gw-worktime 카드의 ↻ 를 누르면 됩니다. " +
   "(팝업은 최신인데 백그라운드가 예전 버전으로 남아 있어요)";
@@ -1558,6 +1559,17 @@ function noteRead(ids) {
   renderAlertList(lastAlerts, lastMoreYn);
 }
 
+function noteReadAll() {
+  lastAlerts = markAllLocallyRead(lastAlerts);
+  renderAlertList(lastAlerts, lastMoreYn);
+}
+
+function syncReadAllButton(unread) {
+  const btn = $("alert-read-all");
+  btn.hidden = unread <= 0;
+  if (unread > 0) btn.disabled = false;
+}
+
 /** 열기와 읽음 처리를 background 에 맡긴다. 사이드패널처럼 화면이 남는 경우 목록도 바로 고친다. */
 function openAlert(alert) {
   chrome.runtime.sendMessage(
@@ -1585,6 +1597,7 @@ function renderAlertList(alerts, moreYn) {
       ? `${alerts.length}건 · 안 읽음 ${unread}건${moreYn ? " · 더 있음" : ""}`
       : "";
     renderAlertBadge(unread);
+    syncReadAllButton(unread);
   };
 
   for (const alert of alerts) {
@@ -1690,6 +1703,7 @@ async function loadAlerts({ force = false } = {}) {
   $("alert-empty").hidden = true;
   $("alert-count").textContent = "";
   renderAlertBadge(0);
+  syncReadAllButton(0);
   renderAlertPoll(res.lastPoll);
   const notice = $("alert-notice");
   notice.hidden = false;
@@ -1866,6 +1880,20 @@ $("hero-toggle").addEventListener("click", toggleHero);
 $("open-gw").addEventListener("click", openGroupware);
 $("notice-action").addEventListener("click", openGroupware);
 $("alert-notice-action").addEventListener("click", openGroupware);
+$("alert-read-all").addEventListener("click", async () => {
+  const snapshot = lastAlerts;
+  const more = lastMoreYn;
+  const btn = $("alert-read-all");
+  btn.disabled = true;
+  noteReadAll();
+  const res = await ask({ type: "markAllAlertsRead" });
+  if (res.ok) return;
+  lastAlerts = snapshot;
+  renderAlertList(snapshot, more);
+  btn.hidden = false;
+  btn.disabled = false;
+  btn.title = res.message || "모두 읽음 처리를 못 했어요.";
+});
 // 팀 출근 이벤트
 $("crew-manage").addEventListener("click", () => openCrewModal(true));
 document.querySelectorAll('[data-close="crew"]').forEach((el) => {
