@@ -1,14 +1,20 @@
-# v* 태그를 밀면 테스트 → 패키징 → 릴리스 발행까지 여기서 끝난다.
-# 로컬 계정이 무엇이든 상관없다. GITHUB_TOKEN 으로 저장소가 스스로 올린다.
+# master 에 머지되면 manifest.json 의 버전을 보고 릴리스를 낸다.
+# 그 버전의 릴리스가 이미 있으면 아무것도 하지 않는다.
+# 즉 "버전을 올린 PR 이 머지될 때"만 발행된다. 태그는 워크플로가 직접 만든다.
 name: Release
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches:
+      - master
+  workflow_dispatch:
 
 permissions:
   contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
   release:
@@ -20,25 +26,39 @@ jobs:
         with:
           node-version: '22'
 
-      # 의존성이 없는 프로젝트라 설치 단계가 없다.
-      - name: Test
-        run: npm test
-
-      - name: 태그와 manifest 버전이 같은지 확인
+      - name: 릴리스가 필요한지 판단
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          TAG="${GITHUB_REF_NAME#v}"
           MANIFEST=$(node -p "require('./manifest.json').version")
           PACKAGE=$(node -p "require('./package.json').version")
-          echo "tag=$TAG manifest=$MANIFEST package=$PACKAGE"
-          if [ "$TAG" != "$MANIFEST" ] || [ "$TAG" != "$PACKAGE" ]; then
-            echo "::error::태그와 manifest.json / package.json 의 버전이 다릅니다."
+          if [ "$MANIFEST" != "$PACKAGE" ]; then
+            echo "::error::manifest.json($MANIFEST) 과 package.json($PACKAGE) 의 버전이 다릅니다."
             exit 1
           fi
 
+          TAG="v$MANIFEST"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "$TAG 릴리스가 이미 있습니다. 넘어갑니다."
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "$TAG 를 새로 발행합니다."
+            echo "needed=true" >> "$GITHUB_OUTPUT"
+            echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          fi
+
+      # 의존성이 없는 프로젝트라 설치 단계가 없다.
+      - name: Test
+        if: steps.check.outputs.needed == 'true'
+        run: npm test
+
       - name: Package
+        if: steps.check.outputs.needed == 'true'
         run: npm run package
 
       - name: ZIP 검증
+        if: steps.check.outputs.needed == 'true'
         run: |
           unzip -tq dist/amaranth-worktime-extension.zip
           # 런타임 파일만 들어 있어야 한다. 테스트·문서·개발 스크립트가 섞이면 실패.
@@ -50,14 +70,19 @@ jobs:
           unzip -Z1 dist/amaranth-worktime-extension.zip | wc -l
 
       - name: Release 발행
+        if: steps.check.outputs.needed == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.check.outputs.tag }}
         run: |
-          NOTES="release-notes/${GITHUB_REF_NAME}.md"
+          NOTES="release-notes/${TAG}.md"
+          # --target 을 주면 태그도 이 커밋에 맞춰 함께 만들어진다.
           if [ -f "$NOTES" ]; then
-            gh release create "$GITHUB_REF_NAME" dist/amaranth-worktime-extension.zip \
-              --title "Amaranth Worktime $GITHUB_REF_NAME" --notes-file "$NOTES"
+            gh release create "$TAG" dist/amaranth-worktime-extension.zip \
+              --target "$GITHUB_SHA" \
+              --title "Amaranth Worktime $TAG" --notes-file "$NOTES"
           else
-            gh release create "$GITHUB_REF_NAME" dist/amaranth-worktime-extension.zip \
-              --title "Amaranth Worktime $GITHUB_REF_NAME" --generate-notes
+            gh release create "$TAG" dist/amaranth-worktime-extension.zip \
+              --target "$GITHUB_SHA" \
+              --title "Amaranth Worktime $TAG" --generate-notes
           fi

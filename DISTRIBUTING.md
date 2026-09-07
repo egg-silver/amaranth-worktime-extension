@@ -41,7 +41,15 @@ npm run package
 
 ## 업데이트 배포
 
-`manifest.json`의 버전을 올리고, 해당 커밋을 가리키는 태그로 GitHub 공개 릴리스를 게시한다.
+`master` 에 머지되면 `.github/workflows/release.yml` 이 돈다. `manifest.json` 의 버전에
+해당하는 릴리스가 아직 없을 때만 발행하므로, **버전을 올린 PR 이 머지될 때만** 릴리스가 나간다.
+
+1. PR 에서 `manifest.json` 과 `package.json` 의 `version` 을 같이 올린다. 두 값이 다르면 워크플로가 멈춘다
+2. 릴리스 노트를 쓰려면 `release-notes/v<버전>.md` 를 같이 커밋한다. 없으면 커밋 목록으로 자동 생성된다
+3. 머지하면 테스트 → 패키징 → ZIP 검증 → 릴리스까지 자동으로 끝난다
+
+태그는 워크플로가 `--target` 으로 직접 만든다. 손으로 태그를 밀 필요 없다.
+
 폴더 업데이트는 최신 공개 릴리스의 태그가 가리키는 소스에서 루트 실행 파일과 `lib/`, `fonts/`, `icons/`를 받는다.
 새 루트 실행 파일을 추가하면 `lib/folder-update.js`의 배포 파일 허용 목록도 갱신해야 한다.
 다운로드·교체·폴더 저장 UI는 `update.html`, `update.js`에 있다.
