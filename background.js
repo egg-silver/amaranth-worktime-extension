@@ -11,6 +11,7 @@ import {
   fetchAlerts,
   fetchCompanyInfo,
   fetchRoster,
+  fetchTeamAttendance,
   markAlertsRead,
   AuthError,
 } from './lib/api.js';
@@ -168,6 +169,42 @@ async function loadRoster({ force } = {}) {
   const savedAt = Date.now();
   await chrome.storage.local.set({ [ROSTER_KEY]: { value: people, savedAt } });
   return { ok: true, people, fetchedAt: savedAt };
+}
+
+const TEAM_MEMBERS_KEY = 'teamMembers'; // storage.local — 등록한 팀원 [{name, empCd}]
+
+/** 오늘 'yyyyMMdd'. */
+function todayStamp() {
+  return formatDate(new Date());
+}
+
+/** 등록된 팀원(+본인)의 오늘 출근 현황. */
+async function loadTeamAttendance() {
+  const identity = await getIdentity();
+  if (!identity?.empCd) {
+    return { ok: false, reason: 'no-identity', message: '사번을 아직 못 읽었어요. 그룹웨어에 한 번 접속해 주세요.' };
+  }
+
+  const { [TEAM_MEMBERS_KEY]: saved } = await chrome.storage.local.get(TEAM_MEMBERS_KEY);
+  const members = Array.isArray(saved) ? saved : [];
+
+  // 본인을 맨 앞에. 등록 목록에 본인이 또 있으면 뺀다.
+  const me = { name: identity.empName || '나', empCd: String(identity.empCd), isMe: true };
+  const others = members.filter((m) => String(m.empCd) !== me.empCd);
+  const all = [me, ...others];
+
+  const credentials = await readCredentials();
+  const date = todayStamp();
+  const rows = await fetchTeamAttendance(credentials, { coCd: identity.coCd, date, members: all });
+
+  // isMe 표시를 살려서 돌려준다.
+  const byCd = new Map(all.map((m) => [m.empCd, m]));
+  return {
+    ok: true,
+    date,
+    people: rows.map((r) => ({ ...r, isMe: !!byCd.get(r.empCd)?.isMe })),
+    fetchedAt: Date.now(),
+  };
 }
 
 async function loadTeam(ym) {
@@ -609,7 +646,7 @@ ensureUpdateAlarm();
 // 팝업이 "지금 돌고 있는 서비스 워커가 최신인지" 확인하는 용도.
 // 팝업 파일은 열 때마다 다시 읽히지만 서비스 워커는 확장을 새로고침해야 바뀌기 때문에,
 // 이 응답이 없으면 예전 워커가 남아 있다는 뜻이다.
-const BUILD = 13;
+const BUILD = 15;
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type === 'ping') {
@@ -642,6 +679,12 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     )
       .then(sendResponse)
       .catch((err) => sendResponse({ ok: false, current: currentVersion(), url: RELEASES_URL, message: String(err) }));
+    return true;
+  }
+  if (message?.type === 'getTeamAttendance') {
+    loadTeamAttendance()
+      .then(sendResponse)
+      .catch((err) => sendResponse(failure(err, null)));
     return true;
   }
   if (message?.type === 'getRoster') {

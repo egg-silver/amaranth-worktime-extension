@@ -14,6 +14,7 @@
       <button class="tab is-active" data-tab="today">오늘</button>
       <button class="tab" data-tab="records">근태</button>
       <button class="tab" data-tab="team">휴가</button>
+      <button class="tab" data-tab="crew">팀근태</button>
       <button class="tab" data-tab="alerts">알림<span id="alert-badge" class="tab-badge" hidden></span></button>
     </nav>
 
@@ -58,42 +59,6 @@
       </section>
 
       <section id="panel-settings" class="panel" hidden>
-        <div id="work-rule" class="rule" hidden>
-          <p class="label">적용된 근무규칙</p>
-          <dl class="rows">
-            <div class="row"><dt>규칙 이름</dt><dd id="rule-name">-</dd></div>
-            <div class="row"><dt>기본 근무시간</dt><dd id="rule-standard">-</dd></div>
-          </dl>
-        </div>
-
-        <label class="field">
-          <span>하루 근무시간 (시간)</span>
-          <input id="daily-hours" type="number" min="1" max="24" step="0.5" />
-        </label>
-        <p class="hint">
-          그룹웨어가 알려주는 하루 소정 근로시간은 8시간입니다. 다르게 계산하고 싶을 때만 바꾸세요.
-        </p>
-        <button id="save-settings" class="btn">저장</button>
-        <p id="settings-saved" class="hint" hidden>저장했어요.</p>
-
-        <hr class="sep" />
-
-        <p class="label">문제가 있을 때</p>
-        <button id="diagnose" class="btn">연결 진단</button>
-        <ul id="diagnose-result" class="diagnose" hidden></ul>
-
-        <label class="field" style="margin-top: 14px">
-          <span>사번 직접 입력</span>
-          <input id="emp-code" type="text" placeholder="숫자만 입력" />
-        </label>
-        <p class="hint">
-          그룹웨어에 접속해도 사번을 못 읽을 때만 쓰세요.
-          그룹웨어 <b>개인인사정보</b>에서 확인할 수 있습니다.
-        </p>
-        <button id="save-emp" class="btn">사번 저장</button>
-
-        <hr class="sep" />
-
         <div class="version">
           <div class="ver-row">
             <span class="ver-label">버전</span>
@@ -108,6 +73,40 @@
             <button id="ver-get" class="btn" type="button" hidden>업데이트</button>
           </div>
         </div>
+
+        <hr class="sep" />
+
+        <div id="work-rule" class="rule" hidden>
+          <p class="label">적용된 근무규칙</p>
+          <dl class="rows">
+            <div class="row"><dt>규칙 이름</dt><dd id="rule-name">-</dd></div>
+            <div class="row"><dt>기본 근무시간</dt><dd id="rule-standard">-</dd></div>
+          </dl>
+        </div>
+
+        <div class="field">
+          <span>하루 근무시간 (시간)</span>
+          <div class="field-row">
+            <input id="daily-hours" type="number" min="1" max="24" step="0.5" />
+            <button id="save-settings" class="btn">저장</button>
+          </div>
+        </div>
+        <p class="hint">기본은 8시간이에요. 다르게 계산할 때만 바꾸세요.</p>
+        <p id="settings-saved" class="hint" hidden>저장했어요.</p>
+
+        <hr class="sep" />
+
+        <div class="field">
+          <span>문제가 있다면 사번 직접 입력</span>
+          <div class="field-row">
+            <input id="emp-code" type="text" placeholder="숫자만 입력" />
+            <button id="save-emp" class="btn">사번 저장</button>
+          </div>
+        </div>
+        <p class="hint">
+          그룹웨어에 접속해도 정보를 불러오지 못할 때만 쓰세요.<br />
+          그룹웨어 <b>개인인사정보</b>에서 확인할 수 있습니다.
+        </p>
 
         <hr class="sep" />
 
@@ -203,6 +202,20 @@
         <p id="team-empty" class="empty" hidden></p>
       </section>
 
+      <section id="panel-crew" class="panel" hidden>
+        <div class="crew-top">
+          <p class="label">우리 팀 근태 <span id="crew-date" class="crew-date"></span></p>
+          <button id="crew-manage" class="text-btn" type="button">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6"/><path d="M22 11h-6"/></svg>
+            팀원 관리
+          </button>
+        </div>
+        <p id="crew-summary" class="crew-summary" hidden></p>
+        <ul id="crew-list" class="crew-list"></ul>
+        <p id="crew-loading" class="empty" hidden>불러오는 중…</p>
+        <p id="crew-empty" class="empty" hidden></p>
+      </section>
+
       <section id="panel-alerts" class="panel" hidden>
         <div class="section-head alerts-head">
           <p class="label">알림</p>
@@ -256,6 +269,47 @@
         <div class="modal-foot">
           <button id="ge-clear" class="btn btn-quiet" type="button">모두 해제</button>
           <button id="ge-done" class="btn" type="button">완료</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="crew-modal" class="modal" hidden>
+      <div class="modal-scrim" data-close="crew"></div>
+      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="crew-title">
+        <div class="modal-head">
+          <p id="crew-title" class="modal-title">팀원 관리</p>
+          <button id="crew-close" class="icon-btn" type="button" title="닫기" aria-label="닫기" data-close="crew">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+          </button>
+        </div>
+
+        <div class="crew-body">
+          <section class="crew-sec">
+            <p class="crew-sec-title">내 공유 코드</p>
+            <p class="crew-sec-hint">이 코드를 팀원에게 보내면, 그 사람 확장에 내 출근 시간이 보여요.</p>
+            <div class="crew-code">
+              <input id="crew-mycode" type="text" readonly value="불러오는 중…" />
+              <button id="crew-copy" class="btn" type="button">복사</button>
+            </div>
+          </section>
+
+          <section class="crew-sec">
+            <p class="crew-sec-title">팀원 추가</p>
+            <div class="crew-ways">
+              <div class="way"><span class="way-dot"></span><span class="way-txt"><b>이름과 사번</b></span><span class="w-ex">홍길동 20260000</span></div>
+              <div class="way-or">또는</div>
+              <div class="way"><span class="way-dot"></span><span class="way-txt">받은 <b>공유 코드</b></span><span class="w-ex">GWA1:…</span></div>
+            </div>
+            <textarea id="crew-paste" rows="3" placeholder="홍길동 20260000&#10;GWA1:… (공유 코드)"></textarea>
+            <button id="crew-add-code" class="btn" type="button">추가</button>
+            <p id="crew-msg" class="crew-msg" hidden></p>
+          </section>
+
+          <section class="crew-sec">
+            <p class="crew-sec-title">등록된 팀원 <span id="crew-count" class="crew-count">0</span></p>
+            <ul id="crew-reg" class="crew-reg"></ul>
+            <p id="crew-reg-empty" class="crew-sec-hint">아직 없어요. 위에서 추가해 주세요.</p>
+          </section>
         </div>
       </div>
     </div>

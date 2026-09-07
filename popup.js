@@ -15,6 +15,7 @@ import {
 } from './lib/calc.js';
 import { isUnread, countUnread, parseCreateDate, alertTitle } from './lib/alerts.js';
 import { savedFolder } from './lib/folder-update.js';
+import { encodeMember, parseMemberInput, isValidEmpCd } from './lib/team-code.js';
 
 const GW_URL = 'https://gw.goorm.io/#/';
 const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
@@ -529,7 +530,7 @@ function icon(name) {
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // background.js 의 BUILD 와 같은 값이어야 한다. 파일을 고칠 때 함께 올린다.
-const EXPECTED_BUILD = 13;
+const EXPECTED_BUILD = 15;
 const STALE_WORKER_MESSAGE =
   '확장을 새로고침해 주세요. chrome://extensions 에서 gw-worktime 카드의 ↻ 를 누르면 됩니다. ' +
   '(팝업은 최신인데 백그라운드가 예전 버전으로 남아 있어요)';
@@ -1044,10 +1045,11 @@ const PANELS = {
   today: 'panel-today',
   records: 'panel-records',
   team: 'panel-team',
+  crew: 'panel-crew',
   alerts: 'panel-alerts',
   settings: 'panel-settings',
 };
-const TAB_ORDER = ['today', 'records', 'team', 'alerts'];
+const TAB_ORDER = ['today', 'records', 'team', 'crew', 'alerts'];
 
 function showTab(name) {
   for (const [key, id] of Object.entries(PANELS)) $(id).hidden = key !== name;
@@ -1068,9 +1070,225 @@ function setupTabs() {
       // 오늘 화면을 아직 못 받았어도 기록은 열리게 한다.
       if (tab.dataset.tab === 'records' && viewMonth == null) showMonth(thisMonth);
       if (tab.dataset.tab === 'team' && teamMonth == null) showTeamMonth(thisMonth);
+      if (tab.dataset.tab === 'crew') loadCrew();
       if (tab.dataset.tab === 'alerts') loadAlerts();
     });
   }
+}
+
+// ── 팀 출근 ──────────────────────────────────────────
+// 서버가 없어 각자 브라우저에 사번을 저장하고, 코드로 주고받아 등록한다.
+const CREW_KEY = 'teamMembers';
+let crewMembers = [];   // [{ name, empCd }]
+let crewMe = null;      // 본인 { name, empCd } — 공유 코드 재료
+
+function fmtHHMM(v) {
+  const s = String(v || '').replace(/[^0-9]/g, '');
+  if (s.length < 3) return '';
+  const hh = s.slice(0, s.length - 2);
+  const mm = s.slice(-2);
+  return `${hh.padStart(2, '0')}:${mm}`;
+}
+
+async function loadCrew() {
+  $('crew-empty').hidden = true;
+  if (!crewList().children.length) $('crew-loading').hidden = false;
+  const res = await ask({ type: 'getTeamAttendance' });
+  $('crew-loading').hidden = true;
+
+  if (!res || !res.ok) {
+    $('crew-list').innerHTML = '';
+    $('crew-empty').hidden = false;
+    $('crew-empty').textContent = failureText(res) || '출근 현황을 불러오지 못했어요.';
+    return;
+  }
+
+  $('crew-date').textContent = res.date ? labelDate(res.date) : '';
+  const me = res.people.find((p) => p.isMe);
+  if (me) crewMe = { name: me.name, empCd: me.empCd };
+  renderCrew(res.people);
+}
+
+function crewList() { return $('crew-list'); }
+
+// 이름 → 은은한 아바타 색. 같은 사람은 늘 같은 색이 되도록 이름 해시로 고른다.
+const AVATAR_TINTS = [
+  ['#eaf2ff', '#1d63d6'], ['#e9f7ef', '#12855f'], ['#fdeee6', '#b4560f'],
+  ['#f1edfb', '#6a45c0'], ['#e7f5f8', '#0e7490'], ['#fdecef', '#c02b47'],
+  ['#eef4ea', '#4d7c1f'], ['#fbf0e3', '#a06510'],
+];
+function avatarTint(name) {
+  let h = 0;
+  for (const ch of String(name)) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return AVATAR_TINTS[h % AVATAR_TINTS.length];
+}
+function initial(name) {
+  const t = String(name || '').trim();
+  return t ? t[0] : '?';
+}
+
+function renderCrew(people) {
+  const host = $('crew-list');
+  host.innerHTML = '';
+
+  const cameCount = people.filter((p) => p.ok && p.comeTm).length;
+  const doneCount = people.filter((p) => p.ok && p.leaveTm).length;
+  const offCount = people.filter((p) => p.ok && !p.comeTm).length;
+  const sum = $('crew-summary');
+  sum.hidden = people.length === 0;
+  const bits = [];
+  if (cameCount - doneCount > 0) bits.push(`근무 중 ${cameCount - doneCount}`);
+  if (doneCount > 0) bits.push(`퇴근 ${doneCount}`);
+  if (offCount > 0) bits.push(`미출근 ${offCount}`);
+  sum.textContent = bits.join('  ·  ');
+
+  // 출근한 사람 먼저(이른 출근 순), 미출근은 아래로. 본인은 항상 맨 위.
+  const sorted = [...people].sort((a, b) => {
+    if (a.isMe !== b.isMe) return a.isMe ? -1 : 1;
+    return (a.comeTm || '9999').localeCompare(b.comeTm || '9999');
+  });
+
+  for (const p of sorted) {
+    const come = fmtHHMM(p.comeTm);
+    const leave = fmtHHMM(p.leaveTm);
+    const state = !p.ok ? 'err' : leave ? 'done' : come ? 'working' : 'off';
+
+    const li = document.createElement('li');
+    li.className = 'crew-row' + (p.isMe ? ' is-me' : '') + ` is-${state}`;
+
+    // 아바타 + 프레즌스 점
+    const av = document.createElement('span');
+    av.className = 'crew-av';
+    const [bg, fg] = avatarTint(p.name);
+    av.style.background = bg;
+    av.style.color = fg;
+    av.textContent = initial(p.name);
+    const dot = document.createElement('span');
+    dot.className = 'crew-dot';
+    av.appendChild(dot);
+
+    // 이름
+    const nm = document.createElement('span');
+    nm.className = 'crew-name';
+    nm.textContent = p.name;
+
+    li.append(av, nm);
+    if (p.isMe) {
+      const badge = document.createElement('span');
+      badge.className = 'crew-me-badge';
+      badge.textContent = '나';
+      li.appendChild(badge);
+    }
+
+    // 시각
+    const time = document.createElement('span');
+    time.className = 'crew-time';
+    if (!p.ok) {
+      time.innerHTML = '<span class="crew-tag err">조회 실패</span>';
+    } else if (!come) {
+      time.innerHTML = p.holiday
+        ? '<span class="crew-tag off">휴일</span>'
+        : '<span class="crew-tag off">미출근</span>';
+    } else if (leave) {
+      const dur = p.workMin > 0 ? ` · ${formatDuration(p.workMin)}` : '';
+      time.innerHTML = `<span class="clock">${come}<span class="arrow">→</span>${leave}</span>` +
+        `<span class="sub">근무 완료${dur}</span>`;
+    } else {
+      time.innerHTML = `<span class="clock">${come} 출근</span>` +
+        `<span class="crew-tag work">근무 중</span>`;
+    }
+    li.appendChild(time);
+    host.appendChild(li);
+  }
+}
+
+// ── 팀원 관리 ────────────────────────────────────────
+function saveCrew() {
+  chrome.storage.local.set({ [CREW_KEY]: crewMembers });
+}
+
+function crewMsg(text, ok) {
+  const el = $('crew-msg');
+  el.hidden = !text;
+  el.textContent = text || '';
+  el.className = 'crew-msg' + (text ? (ok ? ' ok' : ' bad') : '');
+}
+
+function addCrew(list) {
+  const have = new Set(crewMembers.map((m) => m.empCd));
+  if (crewMe) have.add(crewMe.empCd); // 본인은 자동 표시되니 목록에 또 넣지 않는다
+  let added = 0;
+  for (const m of list) {
+    if (!isValidEmpCd(m.empCd) || have.has(m.empCd)) continue;
+    have.add(m.empCd);
+    crewMembers.push({ name: m.name || m.empCd, empCd: String(m.empCd).trim() });
+    added += 1;
+  }
+  if (added) saveCrew();
+  return added;
+}
+
+function renderCrewReg() {
+  const host = $('crew-reg');
+  host.innerHTML = '';
+  $('crew-count').textContent = String(crewMembers.length);
+  $('crew-reg-empty').hidden = crewMembers.length > 0;
+
+  for (const m of crewMembers) {
+    const li = document.createElement('li');
+
+    // 이름을 바로 고칠 수 있는 인라인 입력. 사번만 넣은 사람도 여기서 이름을 붙인다.
+    const nameless = m.name === m.empCd;
+    const nm = document.createElement('input');
+    nm.className = 'nm-edit';
+    nm.type = 'text';
+    nm.value = nameless ? '' : m.name;
+    nm.placeholder = '이름 입력';
+    nm.setAttribute('aria-label', `${m.empCd} 이름`);
+    const commit = () => {
+      const v = nm.value.trim();
+      const next = v || m.empCd; // 비우면 다시 사번(=이름 없음)
+      if (next === m.name) return;
+      m.name = next;
+      saveCrew();
+    };
+    nm.addEventListener('change', commit);
+    nm.addEventListener('blur', commit);
+    nm.addEventListener('keydown', (e) => { if (e.key === 'Enter') nm.blur(); });
+
+    const cd = document.createElement('span');
+    cd.className = 'cd';
+    cd.textContent = m.empCd;
+
+    const rm = document.createElement('button');
+    rm.className = 'rm';
+    rm.type = 'button';
+    rm.title = '삭제';
+    rm.appendChild(icon('cross'));
+    rm.addEventListener('click', () => {
+      crewMembers = crewMembers.filter((x) => x.empCd !== m.empCd);
+      saveCrew();
+      renderCrewReg();
+    });
+
+    li.append(nm, cd, rm);
+    host.appendChild(li);
+  }
+}
+
+function openCrewModal(open) {
+  const box = $('crew-modal');
+  const show = open ?? box.hidden;
+  box.hidden = !show;
+  if (!show) return;
+  crewMsg('', false);
+  $('crew-mycode').value = crewMe ? encodeMember(crewMe.name, crewMe.empCd) : '먼저 팀출근 탭을 한 번 열어 주세요.';
+  renderCrewReg();
+}
+
+function closeCrewModal() {
+  $('crew-modal').hidden = true;
+  loadCrew(); // 바뀐 목록을 반영
 }
 
 // ── 만든 사람 ────────────────────────────────────────
@@ -1164,6 +1382,7 @@ function toggleTab() {
   const next = TAB_ORDER[(TAB_ORDER.indexOf(visible) + 1) % TAB_ORDER.length];
   showTab(next);
   if (next === 'records' && viewMonth == null) showMonth(thisMonth);
+  if (next === 'crew') loadCrew();
   if (next === 'alerts') loadAlerts();
 }
 
@@ -1421,35 +1640,6 @@ async function saveEmpCode() {
   teamCache.clear();
   teamMonth = null;
   await load({ force: true });
-  runDiagnose();
-}
-
-async function runDiagnose() {
-  const btn = $('diagnose');
-  const list = $('diagnose-result');
-  btn.disabled = true;
-  btn.textContent = '확인 중…';
-  list.innerHTML = '';
-  list.hidden = false;
-
-  const res = await ask({ type: 'diagnose' });
-  btn.disabled = false;
-  btn.textContent = '연결 진단';
-
-  const steps = res.steps || [{ name: '진단', ok: false, detail: failureText(res) }];
-  for (const s of steps) {
-    const li = document.createElement('li');
-    li.className = s.ok ? 'ok' : 'bad';
-    const mark = icon(s.ok ? 'check' : 'cross');
-    const step = document.createElement('span');
-    step.className = 'step';
-    step.textContent = s.name;
-    const detail = document.createElement('span');
-    detail.className = 'detail';
-    detail.textContent = s.detail;
-    li.append(mark, step, detail);
-    list.appendChild(li);
-  }
 }
 
 /** 캐시를 비우고 서버에서 다시 가져온다. */
@@ -1525,6 +1715,34 @@ $('hero-toggle').addEventListener('click', toggleHero);
 $('open-gw').addEventListener('click', openGroupware);
 $('notice-action').addEventListener('click', openGroupware);
 $('alert-notice-action').addEventListener('click', openGroupware);
+// 팀 출근 이벤트
+$('crew-manage').addEventListener('click', () => openCrewModal(true));
+document.querySelectorAll('[data-close="crew"]').forEach((el) => {
+  el.addEventListener('click', () => closeCrewModal());
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !$('crew-modal').hidden) closeCrewModal();
+});
+$('crew-copy').addEventListener('click', async () => {
+  const code = $('crew-mycode').value;
+  if (!code || !code.startsWith('GWA1:')) return;
+  try {
+    await navigator.clipboard.writeText(code);
+    $('crew-copy').textContent = '복사됨';
+    setTimeout(() => ($('crew-copy').textContent = '복사'), 1200);
+  } catch {
+    $('crew-mycode').select();
+  }
+});
+$('crew-add-code').addEventListener('click', () => {
+  const found = parseMemberInput($('crew-paste').value);
+  if (!found.length) { crewMsg('공유 코드나 사번을 찾지 못했어요.', false); return; }
+  const n = addCrew(found);
+  $('crew-paste').value = '';
+  renderCrewReg();
+  crewMsg(n ? `${n}명 추가했어요.` : '이미 등록된 사람이에요.', n > 0);
+});
+
 renderCredits();
 
 $('ver-folder').addEventListener('click', () => {
@@ -1544,12 +1762,12 @@ $('open-settings').addEventListener('click', () => {
   return showTab(opening ? 'settings' : 'today');
 });
 $('save-settings').addEventListener('click', saveSettings);
-$('diagnose').addEventListener('click', runDiagnose);
 $('save-emp').addEventListener('click', saveEmpCode);
 
-chrome.storage.local.get([DEPT_KEY, GROUP_KEY]).then((stored) => {
+chrome.storage.local.get([DEPT_KEY, GROUP_KEY, CREW_KEY]).then((stored) => {
   if (typeof stored[DEPT_KEY] === 'string') teamDept = stored[DEPT_KEY];
   if (Array.isArray(stored[GROUP_KEY])) teamGroup = stored[GROUP_KEY];
+  if (Array.isArray(stored[CREW_KEY])) crewMembers = stored[CREW_KEY];
 });
 
 chrome.storage.local.get(VIEW_KEY).then(({ [VIEW_KEY]: saved }) => {

@@ -15,6 +15,7 @@
       return {
         empCd: String(empCd),
         coCd: String(uc.compSeq || '1000'),
+        empName: uc.empName || uc.empRealName || info.user_name || '',
         // 아래는 근태캘린더(휴가) 조회에 쓰인다.
         empSeq: uc.empSeq ? String(uc.empSeq) : null,
         groupSeq: uc.groupSeq ? String(uc.groupSeq) : null,
