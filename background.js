@@ -13,11 +13,23 @@ import {
   fetchRoster,
   fetchTeamAttendance,
   markAlertsRead,
+  markAllAlertsRead,
   AuthError,
-} from './lib/api.js';
-import { alertIdentity, alertTitle, alertContent, countUnread, isUnread } from './lib/alerts.js';
-import { fetchLatestVersion, compareVersions, RELEASES_URL } from './lib/update.js';
-import { setUnreadDot } from './lib/icon.js';
+} from "./lib/api.js";
+import {
+  alertIdentity,
+  alertTitle,
+  alertContent,
+  countUnread,
+  overlayLocalReads,
+  markAllLocallyRead,
+} from "./lib/alerts.js";
+import {
+  fetchLatestVersion,
+  compareVersions,
+  RELEASES_URL,
+} from "./lib/update.js";
+import { setUnreadDot } from "./lib/icon.js";
 import {
   computeStatus,
   buildCalendar,
@@ -26,12 +38,12 @@ import {
   monthRange,
   shiftMonth,
   STANDARD_MINUTES,
-} from './lib/calc.js';
+} from "./lib/calc.js";
 
 const CACHE_TTL_MS = 30 * 60 * 1000; // 일자별 기록과 공휴일은 자주 바뀌지 않는다
-const IDENTITY_KEY = 'identity';
-const RESULT_KEY = 'lastResult';
-const SETTINGS_KEY = 'settings';
+const IDENTITY_KEY = "identity";
+const RESULT_KEY = "lastResult";
+const SETTINGS_KEY = "settings";
 
 // status 의 필드가 늘어나면 올린다. 예전 스키마로 저장된 결과를 그리면
 // 없는 필드가 NaN 이나 잘못된 값으로 새어 나온다.
@@ -40,12 +52,14 @@ const SCHEMA_VERSION = 8;
 const DEFAULT_SETTINGS = { dailyMinutes: STANDARD_MINUTES };
 
 async function getSettings() {
-  const { [SETTINGS_KEY]: saved } = await chrome.storage.local.get(SETTINGS_KEY);
+  const { [SETTINGS_KEY]: saved } =
+    await chrome.storage.local.get(SETTINGS_KEY);
   return { ...DEFAULT_SETTINGS, ...(saved || {}) };
 }
 
 async function getIdentity() {
-  const { [IDENTITY_KEY]: identity } = await chrome.storage.local.get(IDENTITY_KEY);
+  const { [IDENTITY_KEY]: identity } =
+    await chrome.storage.local.get(IDENTITY_KEY);
   return identity || null;
 }
 
@@ -62,7 +76,11 @@ async function writeCache(key, value) {
 /** 한 달치 원본 데이터를 모은다. 이미 받아둔 게 있으면 그것을 쓴다. */
 async function fetchMonth(credentials, identity, ym) {
   const { from, to } = monthRange(ym);
-  const keys = { rows: `rows:${ym}`, holidays: `holidays:${ym}`, leaves: `leaves:${ym}` };
+  const keys = {
+    rows: `rows:${ym}`,
+    holidays: `holidays:${ym}`,
+    leaves: `leaves:${ym}`,
+  };
 
   const [cachedRows, cachedHolidays, cachedLeaves] = await Promise.all([
     readCache(keys.rows),
@@ -71,10 +89,18 @@ async function fetchMonth(credentials, identity, ym) {
   ]);
 
   const [rows, holidays, leaves] = await Promise.all([
-    cachedRows ?? fetchWorkRows(credentials, { empCd: identity.empCd, coCd: identity.coCd, from, to }),
-    cachedHolidays ?? fetchHolidays(credentials, { coCd: identity.coCd, from, to }),
+    cachedRows ??
+      fetchWorkRows(credentials, {
+        empCd: identity.empCd,
+        coCd: identity.coCd,
+        from,
+        to,
+      }),
+    cachedHolidays ??
+      fetchHolidays(credentials, { coCd: identity.coCd, from, to }),
     // 휴가 조회는 부가 기능이다. 실패해도 나머지 화면은 살아 있어야 한다.
-    cachedLeaves ?? fetchLeaves(credentials, identity, { from, to }).catch(() => []),
+    cachedLeaves ??
+      fetchLeaves(credentials, identity, { from, to }).catch(() => []),
   ]);
 
   if (!cachedRows) await writeCache(keys.rows, rows || []);
@@ -88,7 +114,11 @@ async function fetchMonth(credentials, identity, ym) {
 async function loadStatus() {
   const identity = await getIdentity();
   if (!identity?.empCd) {
-    return { ok: false, reason: 'no-identity', message: '사번을 아직 못 읽었어요.' };
+    return {
+      ok: false,
+      reason: "no-identity",
+      message: "사번을 아직 못 읽었어요.",
+    };
   }
 
   const credentials = await readCredentials();
@@ -100,12 +130,18 @@ async function loadStatus() {
 
   const [commute, month, annualLeave] = await Promise.all([
     // 오늘 출퇴근은 캐시하지 않는다. 출근을 막 찍고 여는 경우가 많다.
-    fetchTodayCommute(credentials, { empCd: identity.empCd, coCd: identity.coCd, workDt: today }),
+    fetchTodayCommute(credentials, {
+      empCd: identity.empCd,
+      coCd: identity.coCd,
+      workDt: today,
+    }),
     fetchMonth(credentials, identity, ym),
     // 연차는 부가 정보다. 실패해도 근무시간 화면은 그대로 뜬다.
-    fetchAnnualLeave(credentials, { empCd: identity.empCd, coCd: identity.coCd, date: today }).catch(
-      () => null
-    ),
+    fetchAnnualLeave(credentials, {
+      empCd: identity.empCd,
+      coCd: identity.coCd,
+      date: today,
+    }).catch(() => null),
   ]);
 
   const status = computeStatus({
@@ -113,8 +149,8 @@ async function loadStatus() {
     holidays: month.holidays,
     today,
     nowMin: now.getHours() * 60 + now.getMinutes(),
-    comeTm: commute?.comeTm || '',
-    leaveTm: commute?.leaveTm || '',
+    comeTm: commute?.comeTm || "",
+    leaveTm: commute?.leaveTm || "",
     dailyMinutes: settings.dailyMinutes,
   });
 
@@ -124,7 +160,13 @@ async function loadStatus() {
     status,
     settings,
     month: ym,
-    calendar: buildCalendar({ ym, rows: month.rows, holidays: month.holidays, leaves: month.leaves, today }),
+    calendar: buildCalendar({
+      ym,
+      rows: month.rows,
+      holidays: month.holidays,
+      leaves: month.leaves,
+      today,
+    }),
     leaves: month.leaves,
     annualLeave,
     fetchedAt: Date.now(),
@@ -135,7 +177,11 @@ async function loadStatus() {
 async function loadRecords(ym) {
   const identity = await getIdentity();
   if (!identity?.empCd) {
-    return { ok: false, reason: 'no-identity', message: '사번을 아직 못 읽었어요.' };
+    return {
+      ok: false,
+      reason: "no-identity",
+      message: "사번을 아직 못 읽었어요.",
+    };
   }
 
   const credentials = await readCredentials();
@@ -145,14 +191,20 @@ async function loadRecords(ym) {
   return {
     ok: true,
     month: ym,
-    calendar: buildCalendar({ ym, rows: month.rows, holidays: month.holidays, leaves: month.leaves, today }),
+    calendar: buildCalendar({
+      ym,
+      rows: month.rows,
+      holidays: month.holidays,
+      leaves: month.leaves,
+      today,
+    }),
     leaves: month.leaves,
     fetchedAt: Date.now(),
   };
 }
 
 /** [근태] 탭. 팀 전체 휴가 일정을 달력으로 만든다. */
-const ROSTER_KEY = 'roster';
+const ROSTER_KEY = "roster";
 const ROSTER_TTL_MS = 12 * 60 * 60 * 1000; // 조직 개편은 드물다. 하루 두 번이면 충분.
 
 /** 전사 직원 명부. 그룹 편집 목록의 재료다. */
@@ -171,7 +223,7 @@ async function loadRoster({ force } = {}) {
   return { ok: true, people, fetchedAt: savedAt };
 }
 
-const TEAM_MEMBERS_KEY = 'teamMembers'; // storage.local — 등록한 팀원 [{name, empCd}]
+const TEAM_MEMBERS_KEY = "teamMembers"; // storage.local — 등록한 팀원 [{name, empCd}]
 
 /** 오늘 'yyyyMMdd'. */
 function todayStamp() {
@@ -184,38 +236,55 @@ function todayStamp() {
  * 조직도(roster)에서 empSeq 로 찾아 채우고 저장한다. 그래서 이름은 자동으로 잡힌다.
  */
 async function resolveMyName(identity) {
-  if (identity.empName && identity.empName !== '나') return identity.empName;
-  if (!identity.empSeq) return identity.empName || '나';
+  if (identity.empName && identity.empName !== "나") return identity.empName;
+  if (!identity.empSeq) return identity.empName || "나";
   try {
     const { people } = await loadRoster();
-    const me = (people || []).find((p) => String(p.empSeq) === String(identity.empSeq));
+    const me = (people || []).find(
+      (p) => String(p.empSeq) === String(identity.empSeq),
+    );
     if (me?.person) {
-      await chrome.storage.local.set({ [IDENTITY_KEY]: { ...identity, empName: me.person } });
+      await chrome.storage.local.set({
+        [IDENTITY_KEY]: { ...identity, empName: me.person },
+      });
       return me.person;
     }
-  } catch (err) {
+  } catch {
     /* 조직도를 못 받아도 이름만 못 채울 뿐이다 */
   }
-  return identity.empName || '나';
+  return identity.empName || "나";
 }
 
 async function loadTeamAttendance() {
   const identity = await getIdentity();
   if (!identity?.empCd) {
-    return { ok: false, reason: 'no-identity', message: '사번을 아직 못 읽었어요. 그룹웨어에 한 번 접속해 주세요.' };
+    return {
+      ok: false,
+      reason: "no-identity",
+      message: "사번을 아직 못 읽었어요. 그룹웨어에 한 번 접속해 주세요.",
+    };
   }
 
-  const { [TEAM_MEMBERS_KEY]: saved } = await chrome.storage.local.get(TEAM_MEMBERS_KEY);
+  const { [TEAM_MEMBERS_KEY]: saved } =
+    await chrome.storage.local.get(TEAM_MEMBERS_KEY);
   const members = Array.isArray(saved) ? saved : [];
 
   // 본인을 맨 앞에. 등록 목록에 본인이 또 있으면 뺀다.
-  const me = { name: await resolveMyName(identity), empCd: String(identity.empCd), isMe: true };
+  const me = {
+    name: await resolveMyName(identity),
+    empCd: String(identity.empCd),
+    isMe: true,
+  };
   const others = members.filter((m) => String(m.empCd) !== me.empCd);
   const all = [me, ...others];
 
   const credentials = await readCredentials();
   const date = todayStamp();
-  const rows = await fetchTeamAttendance(credentials, { coCd: identity.coCd, date, members: all });
+  const rows = await fetchTeamAttendance(credentials, {
+    coCd: identity.coCd,
+    date,
+    members: all,
+  });
 
   // isMe 표시를 살려서 돌려준다.
   const byCd = new Map(all.map((m) => [m.empCd, m]));
@@ -230,7 +299,11 @@ async function loadTeamAttendance() {
 async function loadTeam(ym) {
   const identity = await getIdentity();
   if (!identity?.empCd) {
-    return { ok: false, reason: 'no-identity', message: '사번을 아직 못 읽었어요.' };
+    return {
+      ok: false,
+      reason: "no-identity",
+      message: "사번을 아직 못 읽었어요.",
+    };
   }
 
   const credentials = await readCredentials();
@@ -244,7 +317,8 @@ async function loadTeam(ym) {
 
   const [leaves, holidays] = await Promise.all([
     cachedTeam ?? fetchTeamLeaves(credentials, identity, { from, to }),
-    cachedHolidays ?? fetchHolidays(credentials, { coCd: identity.coCd, from, to }),
+    cachedHolidays ??
+      fetchHolidays(credentials, { coCd: identity.coCd, from, to }),
   ]);
 
   if (!cachedTeam) await writeCache(keys.team, leaves || []);
@@ -270,8 +344,8 @@ async function loadTeam(ym) {
 function failure(err, stale) {
   return {
     ok: false,
-    reason: err instanceof AuthError ? 'auth' : 'error',
-    message: err?.message || String(err) || '알 수 없는 오류',
+    reason: err instanceof AuthError ? "auth" : "error",
+    message: err?.message || String(err) || "알 수 없는 오류",
     stale: stale || null,
   };
 }
@@ -295,15 +369,17 @@ async function diagnose() {
 
   const identity = await getIdentity();
   steps.push({
-    name: '사번 확인',
+    name: "사번 확인",
     ok: !!identity?.empCd,
-    detail: identity?.empCd ? `empCd 있음 · coCd ${identity.coCd}` : '없음 — 그룹웨어에 한 번 접속하세요',
+    detail: identity?.empCd
+      ? `empCd 있음 · coCd ${identity.coCd}`
+      : "없음 — 그룹웨어에 한 번 접속하세요",
   });
 
   let credentials = null;
-  await record('쿠키 읽기', async () => {
+  await record("쿠키 읽기", async () => {
     credentials = await readCredentials();
-    return 'oAuthToken · signKey 확보';
+    return "oAuthToken · signKey 확보";
   });
 
   if (!credentials || !identity?.empCd) return { ok: true, steps };
@@ -313,16 +389,16 @@ async function diagnose() {
   const ym = today.slice(0, 6);
   const prev = monthRange(shiftMonth(ym, -1));
 
-  await record('오늘 출퇴근', async () => {
+  await record("오늘 출퇴근", async () => {
     const r = await fetchTodayCommute(credentials, {
       empCd: identity.empCd,
       coCd: identity.coCd,
       workDt: today,
     });
-    return `출근 ${r?.comeTm || '미등록'} · 퇴근 ${r?.leaveTm || '미등록'}`;
+    return `출근 ${r?.comeTm || "미등록"} · 퇴근 ${r?.leaveTm || "미등록"}`;
   });
 
-  await record('지난달 기록', async () => {
+  await record("지난달 기록", async () => {
     const rows = await fetchWorkRows(credentials, {
       empCd: identity.empCd,
       coCd: identity.coCd,
@@ -332,13 +408,20 @@ async function diagnose() {
     return `${prev.from.slice(0, 6)} · ${rows?.length ?? 0}행`;
   });
 
-  await record('공휴일', async () => {
-    const h = await fetchHolidays(credentials, { coCd: identity.coCd, from: prev.from, to: prev.to });
+  await record("공휴일", async () => {
+    const h = await fetchHolidays(credentials, {
+      coCd: identity.coCd,
+      from: prev.from,
+      to: prev.to,
+    });
     return `${h?.length ?? 0}건`;
   });
 
-  await record('휴가 일정', async () => {
-    const l = await fetchLeaves(credentials, identity, { from: prev.from, to: prev.to });
+  await record("휴가 일정", async () => {
+    const l = await fetchLeaves(credentials, identity, {
+      from: prev.from,
+      to: prev.to,
+    });
     return `${l?.length ?? 0}건`;
   });
 
@@ -349,7 +432,12 @@ async function handleGetStatus({ force } = {}) {
   try {
     if (force) {
       const ym = formatDate(new Date()).slice(0, 6);
-      await chrome.storage.local.remove([`rows:${ym}`, `holidays:${ym}`, `leaves:${ym}`, `team:${ym}`]);
+      await chrome.storage.local.remove([
+        `rows:${ym}`,
+        `holidays:${ym}`,
+        `leaves:${ym}`,
+        `team:${ym}`,
+      ]);
     }
     const result = await loadStatus();
     if (result.ok) await chrome.storage.local.set({ [RESULT_KEY]: result });
@@ -370,7 +458,6 @@ async function handleGetRecords({ month }) {
   }
 }
 
-
 // ─── 알림 ─────────────────────────────────────────────────────────────
 // 3분마다 알림 목록을 확인하고, 처음 본 알림만 데스크톱 알림으로 띄운다.
 //
@@ -379,18 +466,20 @@ async function handleGetRecords({ month }) {
 //   막아야 하는 값만 두고, 그마저도 원본 alertId 대신 해시로 저장한다.
 // - 나머지(알림 상세 경로, 폴링 상태, 회사 정보)는 디스크에 남지 않는 storage.session 에 둔다.
 
-const ALERT_ALARM = 'poll-alerts';
+const ALERT_ALARM = "poll-alerts";
 const ALERT_PERIOD_MINUTES = 3;
 const ALERT_PAGE_SIZE = 20;
 
-const SEEN_KEY = 'seenAlertHashes'; // storage.local — 이미 통지한 알림 식별자의 해시 (최신순)
+const SEEN_KEY = "seenAlertHashes"; // storage.local — 이미 통지한 알림 식별자의 해시 (최신순)
 const SEEN_MAX = 300;
-const NOTI_TARGETS_KEY = 'notificationTargets'; // storage.session — notificationId → 알림 상세
-const NOTI_PREFIX = 'gw-worktime:alert:';
+const NOTI_TARGETS_KEY = "notificationTargets"; // storage.session — notificationId → 알림 상세
+const NOTI_PREFIX = "gw-worktime:alert:";
 const NOTI_MAX = 100;
-const LAST_POLL_KEY = 'lastAlertPoll'; // storage.session — 팝업에 보여줄 마지막 폴링 결과
-const COMPANY_INFO_KEY = 'companyInfo'; // storage.session — 읽음 처리에 필요한 회사 정보
-const ALERTS_CACHE_KEY = 'lastAlerts'; // storage.session — 팝업이 바로 그릴 마지막 목록
+const LAST_POLL_KEY = "lastAlertPoll"; // storage.session — 팝업에 보여줄 마지막 폴링 결과
+const COMPANY_INFO_KEY = "companyInfo"; // storage.session — 읽음 처리에 필요한 회사 정보
+const ALERTS_CACHE_KEY = "lastAlerts"; // storage.session — 팝업이 바로 그릴 마지막 목록
+const LOCAL_READ_KEY = "locallyReadAlertIds"; // storage.session — 서버보다 먼저 읽음 표시한 id
+const LOCAL_READ_ALL_KEY = "locallyReadAll"; // storage.session — 모두 읽음 직후 서버가 따라잡을 때까지
 
 async function getSession(key, fallback) {
   const stored = await chrome.storage.session.get(key);
@@ -412,13 +501,18 @@ async function ensureAlertAlarm() {
 
 /** 식별자를 그대로 디스크에 남기지 않기 위한 단방향 축약. 동일성 판정에는 96비트로 충분하다. */
 async function digest(value) {
-  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
-  return Array.from(new Uint8Array(buf).slice(0, 12), (b) => b.toString(16).padStart(2, '0')).join('');
+  const buf = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(value),
+  );
+  return Array.from(new Uint8Array(buf).slice(0, 12), (b) =>
+    b.toString(16).padStart(2, "0"),
+  ).join("");
 }
 
 async function notificationsAllowed() {
   try {
-    return (await chrome.notifications.getPermissionLevel()) === 'granted';
+    return (await chrome.notifications.getPermissionLevel()) === "granted";
   } catch {
     return true;
   }
@@ -427,26 +521,35 @@ async function notificationsAllowed() {
 /** 알림 상세는 그룹웨어의 '/#/popup?...' 상대 경로로 온다. */
 function openAlertWindow(path) {
   if (!path) return;
-  chrome.windows.create({ url: 'https://gw.goorm.io' + path, type: 'popup', width: 1100, height: 850 });
+  chrome.windows.create({
+    url: "https://gw.goorm.io" + path,
+    type: "popup",
+    width: 1100,
+    height: 850,
+  });
 }
 
 async function notify(alert, hash) {
   const notificationId = NOTI_PREFIX + hash;
   await chrome.notifications.create(notificationId, {
-    type: 'basic',
-    iconUrl: 'icons/icon128.png',
+    type: "basic",
+    iconUrl: "icons/icon128.png",
     title: alertTitle(alert),
     message: alertContent(alert),
-    contextMessage: alert.eventType || '',
+    contextMessage: alert.eventType || "",
     // macOS 는 배너 유지 여부를 시스템 알림 스타일이 결정하므로 이 값이 무시될 수 있다.
     requireInteraction: true,
   });
 
   if (!alert.url && !alert.alertId) return;
   const targets = await getSession(NOTI_TARGETS_KEY, {});
-  targets[notificationId] = { url: alert.url || '', alertId: alert.alertId || '' };
+  targets[notificationId] = {
+    url: alert.url || "",
+    alertId: alert.alertId || "",
+  };
   const keys = Object.keys(targets);
-  for (const key of keys.slice(0, Math.max(0, keys.length - NOTI_MAX))) delete targets[key];
+  for (const key of keys.slice(0, Math.max(0, keys.length - NOTI_MAX)))
+    delete targets[key];
   await chrome.storage.session.set({ [NOTI_TARGETS_KEY]: targets });
 }
 
@@ -456,33 +559,93 @@ async function recordPoll(result) {
   return lastPoll;
 }
 
+async function applyLocalRead(ids) {
+  const prev = await getSession(LOCAL_READ_KEY, []);
+  const kept = [
+    ...new Set([...(Array.isArray(prev) ? prev : []), ...ids.map(String)]),
+  ];
+  const cached = await getSession(ALERTS_CACHE_KEY, null);
+  if (!cached?.alerts) {
+    await chrome.storage.session.set({ [LOCAL_READ_KEY]: kept });
+    return;
+  }
+  const { alerts, pending } = overlayLocalReads(cached.alerts, kept);
+  await chrome.storage.session.set({
+    [ALERTS_CACHE_KEY]: { ...cached, alerts },
+    [LOCAL_READ_KEY]: pending,
+  });
+  await setUnreadDot(countUnread(alerts));
+}
+
+async function applyLocalReadAll() {
+  const cached = await getSession(ALERTS_CACHE_KEY, null);
+  const next = { [LOCAL_READ_KEY]: [], [LOCAL_READ_ALL_KEY]: true };
+  if (cached?.alerts) {
+    next[ALERTS_CACHE_KEY] = {
+      ...cached,
+      alerts: markAllLocallyRead(cached.alerts),
+    };
+  }
+  await chrome.storage.session.set(next);
+  await setUnreadDot(0);
+}
+
 async function pollAlerts() {
   try {
     const credentials = await readCredentials();
-    const { alerts, moreYn } = await fetchAlerts(credentials, { pageSize: ALERT_PAGE_SIZE });
+    const fetched = await fetchAlerts(credentials, {
+      pageSize: ALERT_PAGE_SIZE,
+    });
+    const readAll = await getSession(LOCAL_READ_ALL_KEY, false);
+    let alerts;
+    let pending;
+    if (readAll) {
+      const caughtUp = countUnread(fetched.alerts) === 0;
+      alerts = markAllLocallyRead(fetched.alerts);
+      pending = [];
+      await chrome.storage.session.set({ [LOCAL_READ_ALL_KEY]: !caughtUp });
+    } else {
+      const kept = await getSession(LOCAL_READ_KEY, []);
+      ({ alerts, pending } = overlayLocalReads(
+        fetched.alerts,
+        Array.isArray(kept) ? kept : [],
+      ));
+    }
+    const { moreYn } = fetched;
 
-    await chrome.storage.session.set({ [ALERTS_CACHE_KEY]: { alerts, moreYn, fetchedAt: Date.now() } });
+    await chrome.storage.session.set({
+      [ALERTS_CACHE_KEY]: { alerts, moreYn, fetchedAt: Date.now() },
+      [LOCAL_READ_KEY]: pending,
+    });
     await setUnreadDot(countUnread(alerts));
 
     const hashes = await Promise.all(
       alerts.map(async (a) => {
         const id = alertIdentity(a);
         return id ? digest(id) : null;
-      })
+      }),
     );
     const present = hashes.filter(Boolean);
 
     // 첫 폴링은 기준선만 잡는다. 안 그러면 기존 알림이 한꺼번에 쏟아진다.
     const { [SEEN_KEY]: seenHashes } = await chrome.storage.local.get(SEEN_KEY);
     if (!Array.isArray(seenHashes)) {
-      await chrome.storage.local.set({ [SEEN_KEY]: present.slice(0, SEEN_MAX) });
-      return recordPoll({ ok: true, total: alerts.length, notified: 0, baseline: true });
+      await chrome.storage.local.set({
+        [SEEN_KEY]: present.slice(0, SEEN_MAX),
+      });
+      return recordPoll({
+        ok: true,
+        total: alerts.length,
+        notified: 0,
+        baseline: true,
+      });
     }
 
     const seen = new Set(seenHashes);
     const fresh = [];
     alerts.forEach((alert, i) => {
-      if (hashes[i] && !seen.has(hashes[i])) fresh.push({ alert, hash: hashes[i] });
+      if (hashes[i] && !seen.has(hashes[i]))
+        fresh.push({ alert, hash: hashes[i] });
     });
 
     // 목록은 최신순이므로 뒤에서부터 띄워 오래된 알림이 먼저 쌓이게 한다.
@@ -493,12 +656,14 @@ async function pollAlerts() {
       } catch (err) {
         // 실패한 건은 seen 에 넣지 않아 다음 주기에 다시 시도된다.
         failed.add(hash);
-        console.warn('[gw-worktime] 알림 생성 실패:', err?.message || err);
+        console.warn("[gw-worktime] 알림 생성 실패:", err?.message || err);
       }
     }
 
     await chrome.storage.local.set({
-      [SEEN_KEY]: [...new Set([...present.filter((h) => !failed.has(h)), ...seenHashes])].slice(0, SEEN_MAX),
+      [SEEN_KEY]: [
+        ...new Set([...present.filter((h) => !failed.has(h)), ...seenHashes]),
+      ].slice(0, SEEN_MAX),
     });
 
     return recordPoll({
@@ -506,13 +671,23 @@ async function pollAlerts() {
       total: alerts.length,
       notified: fresh.length - failed.size,
       ...(failed.size ? { failed: failed.size } : {}),
-      ...(fresh.length && !(await notificationsAllowed()) ? { blocked: true } : {}),
+      ...(fresh.length && !(await notificationsAllowed())
+        ? { blocked: true }
+        : {}),
     });
   } catch (err) {
     // 로그아웃 상태는 정상이다. 폴링을 멈추지 않고 다음 주기에 다시 시도한다.
     await setUnreadDot(0);
-    await chrome.storage.session.remove(ALERTS_CACHE_KEY);
-    return recordPoll({ ok: false, reason: err instanceof AuthError ? 'auth' : 'error', message: err?.message || String(err) });
+    await chrome.storage.session.remove([
+      ALERTS_CACHE_KEY,
+      LOCAL_READ_KEY,
+      LOCAL_READ_ALL_KEY,
+    ]);
+    return recordPoll({
+      ok: false,
+      reason: err instanceof AuthError ? "auth" : "error",
+      message: err?.message || String(err),
+    });
   }
 }
 
@@ -523,8 +698,18 @@ async function handleGetAlerts({ force } = {}) {
   if (cached) return { ok: true, ...cached, lastPoll };
 
   const result = await pollAlerts();
-  if (!result.ok) return { ok: false, reason: result.reason, message: result.message, lastPoll: result };
-  const fresh = await getSession(ALERTS_CACHE_KEY, { alerts: [], moreYn: false, fetchedAt: Date.now() });
+  if (!result.ok)
+    return {
+      ok: false,
+      reason: result.reason,
+      message: result.message,
+      lastPoll: result,
+    };
+  const fresh = await getSession(ALERTS_CACHE_KEY, {
+    alerts: [],
+    moreYn: false,
+    fetchedAt: Date.now(),
+  });
   return { ok: true, ...fresh, lastPoll: result };
 }
 
@@ -542,7 +727,7 @@ async function markRead(alertIds) {
   // id 가 없으면 서버에 보낼 것이 없다. 조용히 성공으로 처리하면
   // 화면만 읽음으로 바뀌고 서버는 그대로라 다시 열면 되돌아온다.
   if (!ids.length) {
-    return { ok: false, message: '이 알림에는 읽음 처리에 쓸 id 가 없어요.' };
+    return { ok: false, message: "이 알림에는 읽음 처리에 쓸 id 가 없어요." };
   }
 
   try {
@@ -553,25 +738,49 @@ async function markRead(alertIds) {
   }
 
   // 여기까지 왔으면 서버에는 이미 반영됐다.
-  // 목록 갱신은 곁다리이므로 실패해도 읽음 처리를 실패로 되돌리지 않는다.
+  // 팝업이 열린 채로도 바로 보이게 캐시를 먼저 고치고, 목록 재조회는 곁다리다.
+  try {
+    await applyLocalRead(ids);
+  } catch {
+    // 캐시 반영 실패는 읽음 처리 성공을 뒤집지 않는다.
+  }
   try {
     await pollAlerts();
-  } catch (err) {
+  } catch {
     return { ok: true, staleList: true };
   }
   return { ok: true };
 }
 
+async function markAllRead() {
+  try {
+    const credentials = await readCredentials();
+    await markAllAlertsRead(credentials);
+  } catch (err) {
+    return { ok: false, message: err?.message || String(err) };
+  }
+  try {
+    await applyLocalReadAll();
+  } catch {
+    // 캐시 반영 실패는 읽음 처리 성공을 뒤집지 않는다.
+  }
+  try {
+    await pollAlerts();
+  } catch {
+    return { ok: true, staleList: true };
+  }
+  return { ok: true };
+}
 
 // ─── 새 버전 확인 ─────────────────────────────────────────────────────
 // 웹스토어가 아니라 zip 으로 나눠 쓰는 확장이라 크롬이 알아서 갱신해 주지 않는다.
 // 12시간마다 최신 공개 릴리스를 보고, 새 버전이면 한 번만 알려 준다.
 
-const UPDATE_ALARM = 'check-update';
+const UPDATE_ALARM = "check-update";
 const UPDATE_PERIOD_MINUTES = 12 * 60;
-const UPDATE_KEY = 'updateCheck';        // storage.local — 마지막 확인 결과
-const UPDATE_NOTIFIED_KEY = 'updateNotified'; // storage.local — 이미 알린 버전
-const UPDATE_NOTI_ID = 'gw-worktime:update';
+const UPDATE_KEY = "updateCheck"; // storage.local — 마지막 확인 결과
+const UPDATE_NOTIFIED_KEY = "updateNotified"; // storage.local — 이미 알린 버전
+const UPDATE_NOTI_ID = "gw-worktime:update";
 
 function currentVersion() {
   return chrome.runtime.getManifest().version;
@@ -596,13 +805,27 @@ async function checkUpdate({ notify: shouldNotify = false } = {}) {
   try {
     latest = await fetchLatestVersion();
   } catch (err) {
-    const result = { ok: false, current, url: RELEASES_URL, message: err?.message || String(err) };
-    await chrome.storage.local.set({ [UPDATE_KEY]: { ...result, checkedAt: Date.now() } });
+    const result = {
+      ok: false,
+      current,
+      url: RELEASES_URL,
+      message: err?.message || String(err),
+    };
+    await chrome.storage.local.set({
+      [UPDATE_KEY]: { ...result, checkedAt: Date.now() },
+    });
     return result;
   }
 
   const behind = compareVersions(latest, current) > 0;
-  const result = { ok: true, current, latest, behind, url: RELEASES_URL, checkedAt: Date.now() };
+  const result = {
+    ok: true,
+    current,
+    latest,
+    behind,
+    url: RELEASES_URL,
+    checkedAt: Date.now(),
+  };
   await chrome.storage.local.set({ [UPDATE_KEY]: result });
 
   if (shouldNotify && behind) await notifyUpdate(latest);
@@ -611,15 +834,16 @@ async function checkUpdate({ notify: shouldNotify = false } = {}) {
 
 /** 같은 버전을 두 번 알리지 않는다. */
 async function notifyUpdate(latest) {
-  const { [UPDATE_NOTIFIED_KEY]: already } = await chrome.storage.local.get(UPDATE_NOTIFIED_KEY);
+  const { [UPDATE_NOTIFIED_KEY]: already } =
+    await chrome.storage.local.get(UPDATE_NOTIFIED_KEY);
   if (already === latest) return;
   if (!(await notificationsAllowed())) return;
 
   await chrome.notifications.create(UPDATE_NOTI_ID, {
-    type: 'basic',
-    iconUrl: 'icons/icon128.png',
+    type: "basic",
+    iconUrl: "icons/icon128.png",
     title: `새 버전 ${latest} 이 나왔어요`,
-    message: '눌러서 업데이트. 설치 폴더에 적용한 뒤 자동으로 다시 로드합니다.',
+    message: "눌러서 업데이트. 설치 폴더에 적용한 뒤 자동으로 다시 로드합니다.",
     contextMessage: `지금 쓰는 버전 ${currentVersion()}`,
     requireInteraction: true,
   });
@@ -633,7 +857,9 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 
 chrome.notifications.onClicked.addListener(async (notificationId) => {
   if (notificationId === UPDATE_NOTI_ID) {
-    chrome.tabs.create({ url: chrome.runtime.getURL('update.html?action=install') });
+    chrome.tabs.create({
+      url: chrome.runtime.getURL("update.html?action=install"),
+    });
     chrome.notifications.clear(notificationId);
     return;
   }
@@ -666,71 +892,85 @@ ensureUpdateAlarm();
 // 팝업이 "지금 돌고 있는 서비스 워커가 최신인지" 확인하는 용도.
 // 팝업 파일은 열 때마다 다시 읽히지만 서비스 워커는 확장을 새로고침해야 바뀌기 때문에,
 // 이 응답이 없으면 예전 워커가 남아 있다는 뜻이다.
-const BUILD = 18;
+const BUILD = 20;
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  if (message?.type === 'ping') {
+  if (message?.type === "ping") {
     sendResponse({ ok: true, build: BUILD });
     return true;
   }
-  if (message?.type === 'getStatus') {
+  if (message?.type === "getStatus") {
     handleGetStatus(message).then(sendResponse);
     return true; // 비동기 응답
   }
-  if (message?.type === 'getRecords' && message.month) {
+  if (message?.type === "getRecords" && message.month) {
     handleGetRecords(message).then(sendResponse);
     return true;
   }
-  if (message?.type === 'getTeam' && message.month) {
+  if (message?.type === "getTeam" && message.month) {
     loadTeam(message.month)
       .then(sendResponse)
       .catch((err) => sendResponse(failure(err, null)));
     return true;
   }
-  if (message?.type === 'checkUpdate') {
+  if (message?.type === "checkUpdate") {
     // 팝업이 열 때마다 부르므로, 강제가 아니면 저장된 결과를 쓴다.
     (message.force
       ? checkUpdate()
-      : chrome.storage.local.get(UPDATE_KEY).then(({ [UPDATE_KEY]: saved }) =>
-          saved && Date.now() - saved.checkedAt < UPDATE_PERIOD_MINUTES * 60 * 1000
-            ? saved
-            : checkUpdate()
-        )
+      : chrome.storage.local
+          .get(UPDATE_KEY)
+          .then(({ [UPDATE_KEY]: saved }) =>
+            saved &&
+            Date.now() - saved.checkedAt < UPDATE_PERIOD_MINUTES * 60 * 1000
+              ? saved
+              : checkUpdate(),
+          )
     )
       .then(sendResponse)
-      .catch((err) => sendResponse({ ok: false, current: currentVersion(), url: RELEASES_URL, message: String(err) }));
+      .catch((err) =>
+        sendResponse({
+          ok: false,
+          current: currentVersion(),
+          url: RELEASES_URL,
+          message: String(err),
+        }),
+      );
     return true;
   }
-  if (message?.type === 'getTeamAttendance') {
+  if (message?.type === "getTeamAttendance") {
     loadTeamAttendance()
       .then(sendResponse)
       .catch((err) => sendResponse(failure(err, null)));
     return true;
   }
-  if (message?.type === 'getRoster') {
+  if (message?.type === "getRoster") {
     loadRoster({ force: message.force })
       .then(sendResponse)
       .catch((err) => sendResponse(failure(err, null)));
     return true;
   }
-  if (message?.type === 'getAlerts') {
+  if (message?.type === "getAlerts") {
     handleGetAlerts(message)
       .then(sendResponse)
       .catch((err) => sendResponse(failure(err, null)));
     return true;
   }
-  if (message?.type === 'pollAlerts') {
+  if (message?.type === "pollAlerts") {
     pollAlerts().then(sendResponse);
     return true;
   }
-  if (message?.type === 'markAlertsRead' && Array.isArray(message.alertIds)) {
+  if (message?.type === "markAlertsRead" && Array.isArray(message.alertIds)) {
     markRead(message.alertIds).then(sendResponse);
+    return true;
+  }
+  if (message?.type === "markAllAlertsRead") {
+    markAllRead().then(sendResponse);
     return true;
   }
   // 창을 여는 순간 팝업이 닫히므로 읽음 처리까지 여기서 한다.
   // 응답을 먼저 돌려주고 끝내면 서비스 워커가 잠들어 읽음 처리가 서버에 닿지 않을 수 있다.
   // 끝날 때까지 채널을 열어 둬서 워커를 붙잡는다.
-  if (message?.type === 'openAlert') {
+  if (message?.type === "openAlert") {
     openAlertWindow(message.url);
     const ids = Array.isArray(message.alertIds) ? message.alertIds : [];
     if (!ids.length) {
@@ -739,25 +979,40 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     }
     markRead(ids)
       .then(sendResponse)
-      .catch((err) => sendResponse({ ok: false, message: err?.message || String(err) }));
+      .catch((err) =>
+        sendResponse({ ok: false, message: err?.message || String(err) }),
+      );
     return true;
   }
-  if (message?.type === 'diagnose') {
+  if (message?.type === "diagnose") {
     diagnose()
       .then(sendResponse)
-      .catch((err) => sendResponse({ ok: false, message: err?.message || String(err) }));
+      .catch((err) =>
+        sendResponse({ ok: false, message: err?.message || String(err) }),
+      );
     return true;
   }
-  if (message?.type === 'setIdentity' && (message.identity?.empCd || message.identity?.empName)) {
+  if (
+    message?.type === "setIdentity" &&
+    (message.identity?.empCd || message.identity?.empName)
+  ) {
     // 그룹웨어에서 읽어 온 값이 우선이지만, 사용자가 직접 넣은 사번도 지우지 않는다.
     getIdentity()
-      .then((current) => chrome.storage.local.set({ [IDENTITY_KEY]: { ...current, ...message.identity } }))
+      .then((current) =>
+        chrome.storage.local.set({
+          [IDENTITY_KEY]: { ...current, ...message.identity },
+        }),
+      )
       .then(() => sendResponse({ ok: true }));
     return true;
   }
-  if (message?.type === 'setSettings') {
+  if (message?.type === "setSettings") {
     getSettings()
-      .then((current) => chrome.storage.local.set({ [SETTINGS_KEY]: { ...current, ...message.settings } }))
+      .then((current) =>
+        chrome.storage.local.set({
+          [SETTINGS_KEY]: { ...current, ...message.settings },
+        }),
+      )
       .then(() => sendResponse({ ok: true }));
     return true;
   }
@@ -768,8 +1023,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 chrome.runtime.onInstalled.addListener(() => {
   // sidePanel 은 크롬 버전에 따라 없을 수 있다. 여기서 터지면 설치 훅 전체가 죽는다.
   try {
-    chrome.sidePanel?.setPanelBehavior?.({ openPanelOnActionClick: false })?.catch?.(() => {});
-  } catch (e) {
+    chrome.sidePanel
+      ?.setPanelBehavior?.({ openPanelOnActionClick: false })
+      ?.catch?.(() => {});
+  } catch {
     /* 사이드패널은 부가 기능이라 없어도 그만이다 */
   }
   // 확장을 새로 로드하면 예전 스키마의 캐시는 버린다.

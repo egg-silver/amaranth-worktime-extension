@@ -177,8 +177,6 @@
           </div>
         </div>
 
-        </div>
-
         <div class="cal">
           <div class="cal-head">
             <span class="sun">일</span><span>월</span><span>화</span><span>수</span>
@@ -214,7 +212,10 @@
       <section id="panel-alerts" class="panel" hidden>
         <div class="section-head alerts-head">
           <p class="label">알림</p>
-          <span id="alert-count" class="alert-count"></span>
+          <span class="alerts-actions">
+            <span id="alert-count" class="alert-count"></span>
+            <button id="alert-read-all" class="text-btn" type="button" hidden>모두 읽음</button>
+          </span>
         </div>
         <ul id="alert-list" class="alert-list"></ul>
         <p id="alert-empty" class="empty" hidden>알림이 없어요.</p>
