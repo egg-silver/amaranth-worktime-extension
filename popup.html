@@ -56,6 +56,24 @@
             </span>
           </button>
 
+          <div id="smart-banner" class="smart-banner" hidden>
+            <span class="smart-emoji">🌟</span>
+            <span>이번 주에 <b>스마데</b>가 있어요</span>
+          </div>
+
+          <div class="rows-head">
+            <span class="rows-title">이번 달 현황</span>
+            <label class="toggle-row">
+              <span class="toggle-text">오늘 근무 포함</span>
+              <span class="switch">
+                <input type="checkbox" id="include-today" checked />
+                <span class="switch-track"
+                  ><span class="switch-thumb"></span
+                ></span>
+              </span>
+            </label>
+          </div>
+
           <dl class="rows">
             <div class="row">
               <dt>
@@ -82,15 +100,6 @@
             </div>
           </dl>
 
-          <label class="toggle-row">
-            <span class="toggle-text">오늘 근무 시간 포함</span>
-            <span class="switch">
-              <input type="checkbox" id="include-today" checked />
-              <span class="switch-track"
-                ><span class="switch-thumb"></span
-              ></span>
-            </span>
-          </label>
           <div id="warn" class="warn" hidden></div>
         </div>
       </section>
@@ -143,7 +152,9 @@
         </div>
         <p class="hint">
           그룹웨어에 접속해도 정보를 불러오지 못할 때만 쓰세요.<br />
-          그룹웨어 <b>개인인사정보</b>에서 확인할 수 있습니다.
+          <a id="open-hr" class="hint-link" href="#" role="button"
+            >개인인사정보 열기</a
+          >에서 사번을 확인할 수 있어요.
         </p>
 
         <hr class="sep" />
@@ -297,9 +308,76 @@
 
       <section id="panel-crew" class="panel" hidden>
         <div class="crew-top">
-          <p class="label">
-            우리 팀 근태 <span id="crew-date" class="crew-date"></span>
-          </p>
+          <div class="crew-daynav">
+            <button
+              id="crew-prev"
+              class="nav-btn"
+              type="button"
+              title="이전 날"
+              aria-label="이전 날"
+            >
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="m15 18-6-6 6-6" />
+              </svg>
+            </button>
+            <button
+              id="crew-date"
+              class="crew-date"
+              type="button"
+              title="날짜 선택"
+              aria-haspopup="true"
+              aria-expanded="false"
+            >
+              -
+            </button>
+            <button
+              id="crew-next"
+              class="nav-btn"
+              type="button"
+              title="다음 날"
+              aria-label="다음 날"
+            >
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="m9 18 6-6-6-6" />
+              </svg>
+            </button>
+            <div id="crew-cal" class="crew-cal" hidden>
+              <div class="crew-cal-head">
+                <button
+                  id="crew-cal-prev"
+                  class="crew-cal-nav"
+                  type="button"
+                  aria-label="이전"
+                >
+                  <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="m15 18-6-6 6-6" />
+                  </svg>
+                </button>
+                <button
+                  id="crew-cal-title"
+                  class="crew-cal-title"
+                  type="button"
+                  title="연·월 선택"
+                ></button>
+                <button
+                  id="crew-cal-next"
+                  class="crew-cal-nav"
+                  type="button"
+                  aria-label="다음"
+                >
+                  <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="m9 18 6-6-6-6" />
+                  </svg>
+                </button>
+              </div>
+              <div id="crew-cal-week" class="crew-cal-week">
+                <span class="sun">일</span><span>월</span><span>화</span
+                ><span>수</span><span>목</span><span>금</span
+                ><span class="sat">토</span>
+              </div>
+              <div id="crew-cal-grid" class="crew-cal-grid"></div>
+            </div>
+          </div>
           <button id="crew-manage" class="text-btn" type="button">
             <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
               <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
@@ -488,12 +566,20 @@
                 ><span class="w-ex">GWA1:…</span>
               </div>
             </div>
-            <textarea
-              id="crew-paste"
-              rows="3"
-              placeholder="홍길동 20260000&#10;GWA1:… (공유 코드)"
-            ></textarea>
-            <button id="crew-add-code" class="btn" type="button">추가</button>
+            <div class="crew-paste-row">
+              <textarea
+                id="crew-paste"
+                rows="2"
+                placeholder="홍길동 20260000&#10;GWA1:… (공유 코드)"
+              ></textarea>
+              <button
+                id="crew-add-code"
+                class="btn crew-add-btn"
+                type="button"
+              >
+                추가
+              </button>
+            </div>
             <p id="crew-msg" class="crew-msg" hidden></p>
           </section>
 
@@ -505,6 +591,20 @@
             <p id="crew-reg-empty" class="crew-sec-hint">
               아직 없어요. 위에서 추가해 주세요.
             </p>
+            <button
+              id="crew-export"
+              class="btn crew-export-btn"
+              type="button"
+              hidden
+            >
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+                <rect x="9" y="9" width="13" height="13" rx="2" />
+                <path
+                  d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"
+                />
+              </svg>
+              <span id="crew-export-label">팀 코드 복사</span>
+            </button>
           </section>
         </div>
       </div>

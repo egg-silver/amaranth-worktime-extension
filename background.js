@@ -32,6 +32,7 @@ import {
 import { setUnreadDot } from "./lib/icon.js";
 import {
   computeStatus,
+  parseDate,
   buildCalendar,
   buildTeamCalendar,
   formatDate,
@@ -111,6 +112,88 @@ async function fetchMonth(credentials, identity, ym) {
 }
 
 /** 이번 달 데이터를 모아 계산한다. */
+/**
+ * 달력용 rows 에 오늘의 실시간 출퇴근을 채운 새 배열을 만든다.
+ * 일자별 기록이 오늘을 '----' 로 줘서 달력 오늘 칸이 비는 걸 막는다.
+ * nowMin=null 이면 과거 날짜로 보고, 퇴근이 없으면 근무시간을 계산하지 않는다.
+ */
+function withTodayCommute(rows, today, commute, dailyMinutes, nowMin) {
+  const hhmm = (v) => {
+    const d = String(v || "").replace(/\D/g, "");
+    return d.length >= 4 ? d.slice(-4) : "";
+  };
+  const come = hhmm(commute?.comeTm);
+  if (!come) return rows; // 그 날 출근 기록이 없으면 그대로.
+  const leave = hhmm(commute?.leaveTm);
+  const toMin = (t) => (t ? Number(t.slice(0, 2)) * 60 + Number(t.slice(2)) : null);
+  const c = toMin(come);
+  const l = leave ? toMin(leave) : nowMin != null ? nowMin : null;
+  let worked = 0;
+  if (c != null && l != null && l > c) {
+    const lunch = Math.max(0, Math.min(l, 13 * 60) - Math.max(c, 12 * 60));
+    worked = l - c - lunch;
+  }
+
+  const out = rows.map((r) => ({ ...r }));
+  const idx = out.findIndex((r) => r.atDt === today);
+  const patch = {
+    atDt: today,
+    comeTm: come,
+    leaveTm: leave,
+    basicworkTm: String(worked),
+    workGroupStandardWorkTm: String(dailyMinutes),
+  };
+  if (idx >= 0) out[idx] = { ...out[idx], ...patch };
+  else out.push(patch);
+  return out;
+}
+
+/**
+ * 최근 며칠 중 일자별 기록이 비어 있는 평일을 실시간 출퇴근으로 채운다.
+ * getWorkTimeList 는 최근 며칠(오늘·어제 등)을 확정 전이라 '----'/빈칸으로 주는데,
+ * getTodayComeLeaveInfo(fetchTodayCommute)는 과거 날짜도 실제 출퇴근을 준다.
+ */
+async function fillRecentCommute(
+  rows,
+  { credentials, identity, dailyMinutes, today, nowMin, holidays },
+) {
+  const holidaySet = new Set((holidays || []).map((h) => h.date));
+  const byDate = new Map(rows.map((r) => [r.atDt, r]));
+  const p = (n) => String(n).padStart(2, "0");
+  const base = parseDate(today);
+  const targets = [];
+  for (let i = 0; i <= 7; i++) {
+    const d = new Date(base);
+    d.setDate(d.getDate() - i);
+    const ymd = `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}`;
+    if (ymd.slice(0, 6) !== today.slice(0, 6)) continue; // 이번 달만
+    const dow = d.getDay();
+    if (dow === 0 || dow === 6) continue; // 주말 제외
+    if (holidaySet.has(ymd)) continue; // 공휴일 제외
+    const come = String(byDate.get(ymd)?.comeTm || "").replace(/\D/g, "");
+    if (come) continue; // 이미 기록이 있으면 건너뜀
+    targets.push(ymd);
+  }
+  if (!targets.length) return rows;
+
+  const commutes = await Promise.all(
+    targets.map((ymd) =>
+      fetchTodayCommute(credentials, {
+        empCd: identity.empCd,
+        coCd: identity.coCd,
+        workDt: ymd,
+      })
+        .then((c) => [ymd, c])
+        .catch(() => [ymd, null]),
+    ),
+  );
+  let out = rows;
+  for (const [ymd, commute] of commutes) {
+    out = withTodayCommute(out, ymd, commute, dailyMinutes, ymd === today ? nowMin : null);
+  }
+  return out;
+}
+
 async function loadStatus() {
   const identity = await getIdentity();
   if (!identity?.empCd) {
@@ -154,6 +237,25 @@ async function loadStatus() {
     dailyMinutes: settings.dailyMinutes,
   });
 
+  // 일자별 기록은 진행 중인 오늘을 '----' 로 준다. 달력 오늘 칸이 비지 않게
+  // 실시간 출퇴근을 채우고, 확정 전인 최근 며칠도 실시간으로 메운다.
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+  let calendarRows = withTodayCommute(
+    month.rows,
+    today,
+    commute,
+    settings.dailyMinutes,
+    nowMin,
+  );
+  calendarRows = await fillRecentCommute(calendarRows, {
+    credentials,
+    identity,
+    dailyMinutes: settings.dailyMinutes,
+    today,
+    nowMin,
+    holidays: month.holidays,
+  });
+
   return {
     ok: true,
     schemaVersion: SCHEMA_VERSION,
@@ -162,7 +264,7 @@ async function loadStatus() {
     month: ym,
     calendar: buildCalendar({
       ym,
-      rows: month.rows,
+      rows: calendarRows,
       holidays: month.holidays,
       leaves: month.leaves,
       today,
@@ -186,14 +288,42 @@ async function loadRecords(ym) {
 
   const credentials = await readCredentials();
   const month = await fetchMonth(credentials, identity, ym);
-  const today = formatDate(new Date());
+  const now = new Date();
+  const today = formatDate(now);
+
+  // 이번 달을 볼 때는 오늘·최근 며칠 칸이 비지 않게 실시간 출퇴근을 채운다.
+  let rows = month.rows;
+  if (ym === today.slice(0, 6)) {
+    const settings = await getSettings();
+    const nowMin = now.getHours() * 60 + now.getMinutes();
+    const commute = await fetchTodayCommute(credentials, {
+      empCd: identity.empCd,
+      coCd: identity.coCd,
+      workDt: today,
+    }).catch(() => null);
+    rows = withTodayCommute(
+      month.rows,
+      today,
+      commute,
+      settings.dailyMinutes,
+      nowMin,
+    );
+    rows = await fillRecentCommute(rows, {
+      credentials,
+      identity,
+      dailyMinutes: settings.dailyMinutes,
+      today,
+      nowMin,
+      holidays: month.holidays,
+    });
+  }
 
   return {
     ok: true,
     month: ym,
     calendar: buildCalendar({
       ym,
-      rows: month.rows,
+      rows,
       holidays: month.holidays,
       leaves: month.leaves,
       today,
@@ -255,7 +385,7 @@ async function resolveMyName(identity) {
   return identity.empName || "나";
 }
 
-async function loadTeamAttendance() {
+async function loadTeamAttendance(reqDate) {
   const identity = await getIdentity();
   if (!identity?.empCd) {
     return {
@@ -279,7 +409,10 @@ async function loadTeamAttendance() {
   const all = [me, ...others];
 
   const credentials = await readCredentials();
-  const date = todayStamp();
+  const today = todayStamp();
+  // 유효한 날짜이고 미래가 아니면 그 날, 아니면 오늘.
+  const date =
+    /^\d{8}$/.test(reqDate) && reqDate <= today ? reqDate : today;
   const rows = await fetchTeamAttendance(credentials, {
     coCd: identity.coCd,
     date,
@@ -892,7 +1025,7 @@ ensureUpdateAlarm();
 // 팝업이 "지금 돌고 있는 서비스 워커가 최신인지" 확인하는 용도.
 // 팝업 파일은 열 때마다 다시 읽히지만 서비스 워커는 확장을 새로고침해야 바뀌기 때문에,
 // 이 응답이 없으면 예전 워커가 남아 있다는 뜻이다.
-const BUILD = 20;
+const BUILD = 29;
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type === "ping") {
@@ -938,7 +1071,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return true;
   }
   if (message?.type === "getTeamAttendance") {
-    loadTeamAttendance()
+    loadTeamAttendance(message.date)
       .then(sendResponse)
       .catch((err) => sendResponse(failure(err, null)));
     return true;

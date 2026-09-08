@@ -119,3 +119,9 @@ test('코드 뒤에 이름이 공백 없이 붙어도 분리', () => {
   const out = parseMemberInput(encodeMember('나', '20250004') + '김철수20250002');
   assert.deepEqual(out.map((x) => x.empCd), ['20250004', '20250002']);
 });
+
+
+
+
+
+

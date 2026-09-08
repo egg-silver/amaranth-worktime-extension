@@ -15,6 +15,8 @@ import {
   formatClock,
   formatDuration,
   parseTimeToMinutes,
+  isSmartDay,
+  weekHasSmartDay,
 } from '../lib/calc.js';
 
 const row = (atDt, opts = {}) => ({
@@ -275,14 +277,17 @@ test('달력은 요일에 맞춰 칸을 채운다', () => {
     today: '20260902',
   });
 
-  assert.equal(cal.weeks[0][0], null, '9/1 이 화요일이라 일요일 칸은 빈다');
-  assert.equal(cal.weeks[0][1], null);
+  // 9/1 이 화요일 → 앞의 일·월 칸은 이전 달(8월) 날짜로 채워진다.
+  assert.equal(cal.weeks[0][0].outside, true, '앞칸은 이전 달');
+  assert.equal(cal.weeks[0][0].ym, '202608');
+  assert.equal(cal.weeks[0][1].outside, true);
   assert.equal(cal.weeks[0][2].day, 1);
+  assert.equal(cal.weeks[0][2].outside, undefined);
   assert.equal(cal.weeks[0][2].weekday, 2);
 
-  // 모든 주는 7칸이고, 날짜 칸은 30개다.
+  // 모든 주는 7칸. 이 달 날짜(outside 아님)는 30개다.
   assert.ok(cal.weeks.every((w) => w.length === 7));
-  assert.equal(cal.weeks.flat().filter(Boolean).length, 30);
+  assert.equal(cal.weeks.flat().filter((c) => c && !c.outside).length, 30);
 
   const sep24 = cal.weeks.flat().find((c) => c?.date === '20260924');
   assert.equal(sep24.isHoliday, true);
@@ -445,10 +450,24 @@ test('팀 근태 달력은 날짜마다 쉬는 사람을 모은다', () => {
 
 test('팀 근태 달력도 요일에 맞춰 칸을 채운다', () => {
   const cal = buildTeamCalendar({ ym: '202609', leaves: [], holidays: [], today: '20260904' });
-  assert.equal(cal.weeks[0][0], null, '9/1 이 화요일이라 앞이 빈다');
+  assert.equal(cal.weeks[0][0].outside, true, '앞칸은 이전 달');
   assert.equal(cal.weeks[0][2].day, 1);
   assert.ok(cal.weeks.every((w) => w.length === 7));
-  assert.equal(cal.weeks.flat().filter(Boolean).length, 30);
+  assert.equal(cal.weeks.flat().filter((c) => c && !c.outside).length, 30);
   assert.equal(cal.totals.entries, 0);
   assert.equal(cal.totals.busiest, null, '휴가가 없으면 가장 많은 날도 없다');
+});
+
+test('스마데는 3주 주기 금요일이다', () => {
+  assert.equal(isSmartDay('20260911'), true);   // 기준 금요일
+  assert.equal(isSmartDay('20261002'), true);   // +21일 금요일
+  assert.equal(isSmartDay('20260821'), true);   // -21일 금요일
+  assert.equal(isSmartDay('20260918'), false);  // 다음 주 금요일(주기 아님)
+  assert.equal(isSmartDay('20260910'), false);  // 목요일
+});
+
+test('그 주에 스마데가 있는지', () => {
+  assert.equal(weekHasSmartDay('20260907'), true);  // 09-07(월) 주의 금요일 09-11 = 스마데
+  assert.equal(weekHasSmartDay('20260911'), true);  // 금요일 당일
+  assert.equal(weekHasSmartDay('20260914'), false); // 다음 주
 });

@@ -9,6 +9,7 @@ import {
   buildTeamCalendar,
   shiftMonth,
   expandLeaves,
+  weekHasSmartDay,
   STANDARD_MINUTES,
   LUNCH_START,
   LUNCH_END,
@@ -24,6 +25,7 @@ import {
 import { savedFolder } from "./lib/folder-update.js";
 import {
   encodeMember,
+  encodeMembers,
   parseMemberInput,
   isValidEmpCd,
 } from "./lib/team-code.js";
@@ -170,14 +172,18 @@ function heroContent(status, view) {
   };
 }
 
-/** 토글이 '오늘 제외' 면 이번 달 누적·부족·진도를 오늘 뺀 값으로 바꿔 준다. */
+/** 토글에 따라 이번 달 누적·부족·진도·초과부족을 오늘 포함/제외 값으로 맞춘다. */
 function effectiveStatus(status) {
-  if (includeToday || !status) return status;
+  if (!status) return status;
+  const k = includeToday ? "InclToday" : "ExclToday";
+  const pick = (base) => status[base + k] ?? status[base];
   return {
     ...status,
-    accumulated: status.accumulatedExclToday ?? status.accumulated,
-    shortage: status.shortageExclToday ?? status.shortage,
-    progressRatio: status.progressRatioExclToday ?? status.progressRatio,
+    accumulated: pick("accumulated"),
+    shortage: pick("shortage"),
+    progressRatio: pick("progressRatio"),
+    balance: pick("balance"),
+    // 권장 평균은 앞으로의 계획 값이라 토글로 흔들리면 안 된다. status.todayTarget 고정.
   };
 }
 
@@ -221,6 +227,7 @@ function renderToday(rawStatus, fetchedAt, staleNote) {
   }
 
   $("date").textContent = headerDate(status.today);
+  $("smart-banner").hidden = !weekHasSmartDay(status.today);
 
   renderHero(status);
 
@@ -230,12 +237,13 @@ function renderToday(rawStatus, fetchedAt, staleNote) {
       ? formatDuration(status.todayRemainingByDaily)
       : "다 채웠어요";
 
+  const eff = effectiveStatus(status);
   const balanceEl = $("balance");
-  if (status.balance == null) {
+  if (eff.balance == null) {
     balanceEl.className = "";
     balanceEl.textContent = "-";
   } else {
-    const rounded = Math.round(status.balance);
+    const rounded = Math.round(eff.balance);
     balanceEl.className =
       rounded > 0 ? "balance-plus" : rounded < 0 ? "balance-minus" : "";
     balanceEl.textContent =
@@ -246,12 +254,11 @@ function renderToday(rawStatus, fetchedAt, staleNote) {
 
   // 부족분을 남은 근무일로 나눈 하루 권장 평균. 이만큼씩 채우면 소정에 맞는다.
   $("rec-avg").textContent =
-    status.remainingWorkDays > 0 && status.todayTarget > 0
-      ? formatDuration(status.todayTarget)
+    status.remainingWorkDays > 0 && eff.todayTarget > 0
+      ? formatDuration(eff.todayTarget)
       : "여유 있어요";
-  const effShortage = effectiveStatus(status).shortage;
   $("shortage").textContent =
-    effShortage > 0 ? formatDuration(effShortage) : "다 채웠어요";
+    eff.shortage > 0 ? formatDuration(eff.shortage) : "다 채웠어요";
   $("remaining").textContent =
     status.monthWorkDays != null
       ? `${status.remainingWorkDays}/${status.monthWorkDays}일`
@@ -471,6 +478,19 @@ function renderCalendar(calendar, status) {
         grid.appendChild(blank);
         continue;
       }
+      // 이전/다음 달 날짜 — 누르면 그 달로 이동한다.
+      if (cell.outside) {
+        const out = document.createElement("button");
+        out.type = "button";
+        out.className = "cal-cell outside" + (cell.weekday === 0 ? " sun" : "");
+        const on = document.createElement("span");
+        on.className = "num";
+        on.textContent = String(cell.day);
+        out.appendChild(on);
+        out.addEventListener("click", () => showMonth(cell.ym));
+        grid.appendChild(out);
+        continue;
+      }
       // 누를 수 있는 칸은 진짜 button 이어야 키보드로도 쓸 수 있다.
       const el = document.createElement("button");
       el.type = "button";
@@ -506,28 +526,37 @@ function renderCalendar(calendar, status) {
       num.textContent = String(cell.day);
       el.appendChild(num);
 
-      const hours = document.createElement("span");
-      hours.className = "hours";
-      if (cell.missingLeave) hours.textContent = "미등록";
-      else if (cell.worked > 0) hours.textContent = shortHours(cell.worked);
-      else hours.innerHTML = "&nbsp;";
-      el.appendChild(hours);
+      if (cell.smartDay) {
+        const star = document.createElement("span");
+        star.className = "smart-star";
+        star.textContent = "🌟";
+        star.title = "스마데";
+        el.appendChild(star);
+      }
 
-      // 꼬리표 줄은 비어 있어도 자리를 잡아 둔다. 그래야 모든 칸의 날짜·시간이 같은 높이에 온다.
-      // 휴가는 점이 아니라 이름으로 보여 준다. 무슨 휴가인지가 정보다.
+      // 근무시간·미등록만 시각 줄로 보여 준다. 빈 날은 빈 줄을 넣지 않는다.
+      if (cell.missingLeave || cell.worked > 0) {
+        const hours = document.createElement("span");
+        hours.className = "hours";
+        hours.textContent = cell.missingLeave ? "미등록" : shortHours(cell.worked);
+        el.appendChild(hours);
+      }
+
       // 공휴일 이름을 적어 두면 "왜 이 달 근무일이 20일인지" 가 달력에서 바로 읽힌다.
-      const tag = document.createElement("span");
-      if (cell.leaveName) {
-        tag.className = "leave-tag";
-        tag.textContent = shortLeaveName(cell.leaveName);
-      } else if (cell.holidayName) {
+      if (!cell.leaveName && cell.holidayName) {
+        const tag = document.createElement("span");
         tag.className = "holi-tag";
         tag.textContent = shortHolidayName(cell.holidayName);
-      } else {
-        tag.className = "tag-slot";
-        tag.innerHTML = "&nbsp;";
+        el.appendChild(tag);
       }
-      el.appendChild(tag);
+
+      // 휴가는 점이 아니라 이름으로 보여 준다. 무슨 휴가인지가 정보다.
+      if (cell.leaveName) {
+        const tag = document.createElement("span");
+        tag.className = "leave-tag";
+        tag.textContent = shortLeaveName(cell.leaveName);
+        el.appendChild(tag);
+      }
 
       const interactive =
         cell.worked > 0 ||
@@ -584,7 +613,7 @@ function icon(name) {
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // background.js 의 BUILD 와 같은 값이어야 한다. 파일을 고칠 때 함께 올린다.
-const EXPECTED_BUILD = 20;
+const EXPECTED_BUILD = 29;
 const STALE_WORKER_MESSAGE =
   "확장을 새로고침해 주세요. chrome://extensions 에서 gw-worktime 카드의 ↻ 를 누르면 됩니다. " +
   "(팝업은 최신인데 백그라운드가 예전 버전으로 남아 있어요)";
@@ -650,8 +679,7 @@ function labelMonth(ym) {
 async function showMonth(ym) {
   viewMonth = ym;
   $("month-label").textContent = labelMonth(ym);
-  // 아직 오지 않은 달은 볼 것이 없다.
-  $("next-month").disabled = thisMonth != null && ym >= thisMonth;
+  // 달력처럼 앞으로도 넘길 수 있게 한다(다음 달 근태·휴가 미리 보기).
 
   const cached = monthCache.get(ym);
   if (cached) {
@@ -764,7 +792,7 @@ function renderTeamCalendar(calendar) {
   grid.innerHTML = "";
   if (!calendar?.weeks) return;
 
-  const cells = calendar.weeks.flat().filter(Boolean);
+  const cells = calendar.weeks.flat().filter((c) => c && !c.outside);
   let pick =
     cells.find((c) => c.date === teamSelected) ||
     cells.find((c) => c.isToday) ||
@@ -777,6 +805,19 @@ function renderTeamCalendar(calendar) {
         const blank = document.createElement("div");
         blank.className = "cal-cell empty";
         grid.appendChild(blank);
+        continue;
+      }
+      // 이전/다음 달 날짜 — 누르면 그 달로 이동.
+      if (cell.outside) {
+        const out = document.createElement("button");
+        out.type = "button";
+        out.className = "cal-cell outside" + (cell.weekday === 0 ? " sun" : "");
+        const on = document.createElement("span");
+        on.className = "num";
+        on.textContent = String(cell.day);
+        out.appendChild(on);
+        out.addEventListener("click", () => showTeamMonth(cell.ym));
+        grid.appendChild(out);
         continue;
       }
 
@@ -800,6 +841,14 @@ function renderTeamCalendar(calendar) {
       num.className = "num";
       num.textContent = String(cell.day);
       el.appendChild(num);
+
+      if (cell.smartDay) {
+        const star = document.createElement("span");
+        star.className = "smart-star";
+        star.textContent = "🌟";
+        star.title = "스마데";
+        el.appendChild(star);
+      }
 
       if (cell.count) el.appendChild(teamPips(cell));
       else if (cell.holidayName) {
@@ -1087,7 +1136,6 @@ function toggleGroupEditor(open) {
 async function showTeamMonth(ym) {
   teamMonth = ym;
   $("team-month").textContent = labelMonth(ym);
-  $("team-next").disabled = thisMonth != null && ym >= thisMonth;
 
   const cached = teamCache.get(ym);
   if (cached) {
@@ -1177,10 +1225,24 @@ function fmtHHMM(v) {
   return `${hh.padStart(2, "0")}:${mm}`;
 }
 
+let crewDate = null; // 보고 있는 날짜 yyyyMMdd, null 이면 오늘
+
+/** 'yyyyMMdd' 를 하루 옮긴다. */
+function shiftDay(ymd, delta) {
+  const d = parseDate(ymd);
+  d.setDate(d.getDate() + delta);
+  const p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}`;
+}
+
 async function loadCrew() {
   $("crew-empty").hidden = true;
   if (!crewList().children.length) $("crew-loading").hidden = false;
-  const res = await ask({ type: "getTeamAttendance" });
+  const res = await ask(
+    crewDate
+      ? { type: "getTeamAttendance", date: crewDate }
+      : { type: "getTeamAttendance" },
+  );
   $("crew-loading").hidden = true;
 
   if (!res || !res.ok) {
@@ -1191,7 +1253,10 @@ async function loadCrew() {
     return;
   }
 
+  crewDate = res.date || crewDate;
   $("crew-date").textContent = res.date ? labelDate(res.date) : "";
+  // 오늘보다 미래로는 못 간다.
+  $("crew-next").disabled = crewDate >= formatToday();
   const me = res.people.find((p) => p.isMe);
   if (me) crewMe = { name: me.name, empCd: me.empCd };
   renderCrew(res.people);
@@ -1332,6 +1397,7 @@ function renderCrewReg() {
   const host = $("crew-reg");
   host.innerHTML = "";
   $("crew-count").textContent = String(crewMembers.length);
+  $("crew-export").hidden = crewMembers.length === 0;
   $("crew-reg-empty").hidden = crewMembers.length > 0;
 
   for (const m of crewMembers) {
@@ -1868,16 +1934,18 @@ document.addEventListener("keydown", (e) => {
 $("team-prev").addEventListener("click", () =>
   showTeamMonth(shiftMonth(teamMonth, -1)),
 );
-$("team-next").addEventListener("click", () => {
-  const next = shiftMonth(teamMonth, 1);
-  if (thisMonth == null || next <= thisMonth) showTeamMonth(next);
-});
-$("next-month").addEventListener("click", () => {
-  const next = shiftMonth(viewMonth, 1);
-  if (thisMonth == null || next <= thisMonth) showMonth(next);
-});
+$("team-next").addEventListener("click", () =>
+  showTeamMonth(shiftMonth(teamMonth, 1)),
+);
+$("next-month").addEventListener("click", () =>
+  showMonth(shiftMonth(viewMonth, 1)),
+);
 $("hero-toggle").addEventListener("click", toggleHero);
 $("open-gw").addEventListener("click", openGroupware);
+$("open-hr").addEventListener("click", (e) => {
+  e.preventDefault();
+  chrome.tabs.create({ url: "https://gw.goorm.io/#/HP/HPM0110/HPM0110" });
+});
 $("notice-action").addEventListener("click", openGroupware);
 $("alert-notice-action").addEventListener("click", openGroupware);
 $("alert-read-all").addEventListener("click", async () => {
@@ -1896,11 +1964,165 @@ $("alert-read-all").addEventListener("click", async () => {
 });
 // 팀 출근 이벤트
 $("crew-manage").addEventListener("click", () => openCrewModal(true));
+$("crew-prev").addEventListener("click", () => {
+  crewDate = shiftDay(crewDate || formatToday(), -1);
+  loadCrew();
+});
+$("crew-next").addEventListener("click", () => {
+  const next = shiftDay(crewDate || formatToday(), 1);
+  if (next > formatToday()) return;
+  crewDate = next;
+  loadCrew();
+});
+// 날짜 라벨을 누르면 앱 안의 달력 팝오버가 열린다 — 하루씩 안 눌러도 된다.
+let crewCalYm = null; // 보고 있는 달 yyyyMM
+let crewCalMode = "day"; // 'day' = 날짜 선택, 'month' = 연·월 선택
+
+function crewCalClose() {
+  $("crew-cal").hidden = true;
+  crewCalMode = "day";
+  $("crew-date").setAttribute("aria-expanded", "false");
+}
+
+function crewCalRender() {
+  const today = formatToday();
+  const sel = crewDate || today;
+  if (!crewCalYm) crewCalYm = sel.slice(0, 6);
+  const y = +crewCalYm.slice(0, 4);
+  const m = +crewCalYm.slice(4, 6); // 1부터
+  const grid = $("crew-cal-grid");
+
+  if (crewCalMode === "month") {
+    // 연·월 선택: ‹ › 로 연도 이동, 12개월 격자에서 달을 고른다.
+    $("crew-cal-title").textContent = `${y}년`;
+    $("crew-cal-week").hidden = true;
+    $("crew-cal-prev").disabled = false;
+    $("crew-cal-next").disabled = y >= +today.slice(0, 4);
+    grid.classList.add("months");
+    const selYm = crewCalYm;
+    let html = "";
+    for (let mm = 1; mm <= 12; mm++) {
+      const ym = `${y}${String(mm).padStart(2, "0")}`;
+      const cls = ["crew-cal-mcell"];
+      if (ym === today.slice(0, 6)) cls.push("today");
+      if (ym === selYm) cls.push("sel");
+      const future = ym > today.slice(0, 6);
+      if (future) cls.push("disabled");
+      html += `<button type="button" class="${cls.join(" ")}" data-ym="${ym}"${future ? " disabled" : ""}>${mm}월</button>`;
+    }
+    grid.innerHTML = html;
+    return;
+  }
+
+  // 날짜 선택
+  $("crew-cal-title").textContent = `${y}년 ${m}월`;
+  $("crew-cal-week").hidden = false;
+  $("crew-cal-prev").disabled = false;
+  $("crew-cal-next").disabled = crewCalYm >= today.slice(0, 6);
+  grid.classList.remove("months");
+  const lead = new Date(y, m - 1, 1).getDay(); // 0=일
+  const days = new Date(y, m, 0).getDate();
+  const p = (n) => String(n).padStart(2, "0");
+  let html = "";
+  for (let i = 0; i < lead; i++)
+    html += '<span class="crew-cal-cell empty"></span>';
+  for (let d = 1; d <= days; d++) {
+    const ymd = `${y}${p(m)}${p(d)}`;
+    const dow = (lead + d - 1) % 7;
+    const cls = ["crew-cal-cell"];
+    if (dow === 0) cls.push("sun");
+    if (dow === 6) cls.push("sat");
+    if (ymd === today) cls.push("today");
+    if (ymd === sel) cls.push("sel");
+    const future = ymd > today;
+    if (future) cls.push("disabled");
+    html += `<button type="button" class="${cls.join(" ")}" data-ymd="${ymd}"${future ? " disabled" : ""}>${d}</button>`;
+  }
+  grid.innerHTML = html;
+}
+
+function crewCalShift(delta) {
+  if (crewCalMode === "month") {
+    crewCalYm = `${+crewCalYm.slice(0, 4) + delta}${crewCalYm.slice(4, 6)}`;
+  } else {
+    const y = +crewCalYm.slice(0, 4);
+    const m = +crewCalYm.slice(4, 6);
+    const d = new Date(y, m - 1 + delta, 1);
+    crewCalYm = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}`;
+  }
+  crewCalRender();
+}
+
+$("crew-date").addEventListener("click", (e) => {
+  e.stopPropagation();
+  const cal = $("crew-cal");
+  if (!cal.hidden) {
+    crewCalClose();
+    return;
+  }
+  crewCalMode = "day";
+  crewCalYm = (crewDate || formatToday()).slice(0, 6);
+  crewCalRender();
+  cal.hidden = false;
+  $("crew-date").setAttribute("aria-expanded", "true");
+});
+// 제목을 누르면 연·월 선택 ↔ 날짜 선택 을 오간다.
+$("crew-cal-title").addEventListener("click", () => {
+  crewCalMode = crewCalMode === "day" ? "month" : "day";
+  crewCalRender();
+});
+$("crew-cal-prev").addEventListener("click", () => crewCalShift(-1));
+$("crew-cal-next").addEventListener("click", () => {
+  if ($("crew-cal-next").disabled) return;
+  crewCalShift(1);
+});
+$("crew-cal-grid").addEventListener("click", (e) => {
+  const mcell = e.target.closest("[data-ym]");
+  if (mcell) {
+    if (mcell.disabled) return;
+    crewCalYm = mcell.dataset.ym;
+    crewCalMode = "day";
+    crewCalRender();
+    return;
+  }
+  const btn = e.target.closest("[data-ymd]");
+  if (!btn || btn.disabled) return;
+  crewDate = btn.dataset.ymd;
+  crewCalClose();
+  loadCrew();
+});
+// 팝오버 바깥을 누르면 닫힌다.
+document.addEventListener("click", (e) => {
+  if ($("crew-cal").hidden) return;
+  if (e.target.closest("#crew-cal") || e.target.closest("#crew-date")) return;
+  crewCalClose();
+});
 document.querySelectorAll('[data-close="crew"]').forEach((el) => {
   el.addEventListener("click", () => closeCrewModal());
 });
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && !$("crew-modal").hidden) closeCrewModal();
+  if (e.key !== "Escape") return;
+  if (!$("crew-cal").hidden) {
+    crewCalClose();
+    return;
+  }
+  if (!$("crew-modal").hidden) closeCrewModal();
+});
+$("crew-export").addEventListener("click", async () => {
+  if (!crewMembers.length) return;
+  // 나까지 넣어 팀 전체가 한 코드로 돌게 한다.
+  const list = crewMe
+    ? [{ name: crewMe.name, empCd: crewMe.empCd }, ...crewMembers]
+    : crewMembers;
+  const code = encodeMembers(list);
+  const label = $("crew-export-label");
+  try {
+    await navigator.clipboard.writeText(code);
+    label.textContent = `복사됨 (${list.length}명)`;
+    setTimeout(() => (label.textContent = "팀 코드 복사"), 1500);
+  } catch {
+    crewMsg("복사에 실패했어요. 다시 시도해 주세요.", false);
+  }
 });
 $("crew-copy").addEventListener("click", async () => {
   const code = $("crew-mycode").value;
