@@ -513,21 +513,21 @@ function renderCalendar(calendar, status) {
       else hours.innerHTML = "&nbsp;";
       el.appendChild(hours);
 
-      // 공휴일 이름을 적어 두면 "왜 이 달 근무일이 20일인지" 가 달력에서 바로 읽힌다.
-      if (!cell.leaveName && cell.holidayName) {
-        const tag = document.createElement("span");
-        tag.className = "holi-tag";
-        tag.textContent = shortHolidayName(cell.holidayName);
-        el.appendChild(tag);
-      }
-
+      // 꼬리표 줄은 비어 있어도 자리를 잡아 둔다. 그래야 모든 칸의 날짜·시간이 같은 높이에 온다.
       // 휴가는 점이 아니라 이름으로 보여 준다. 무슨 휴가인지가 정보다.
+      // 공휴일 이름을 적어 두면 "왜 이 달 근무일이 20일인지" 가 달력에서 바로 읽힌다.
+      const tag = document.createElement("span");
       if (cell.leaveName) {
-        const tag = document.createElement("span");
         tag.className = "leave-tag";
         tag.textContent = shortLeaveName(cell.leaveName);
-        el.appendChild(tag);
+      } else if (cell.holidayName) {
+        tag.className = "holi-tag";
+        tag.textContent = shortHolidayName(cell.holidayName);
+      } else {
+        tag.className = "tag-slot";
+        tag.innerHTML = "&nbsp;";
       }
+      el.appendChild(tag);
 
       const interactive =
         cell.worked > 0 ||
