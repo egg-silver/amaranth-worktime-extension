@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ko">
   <head>
     <meta charset="utf-8" />
@@ -6,7 +6,9 @@
   </head>
   <body>
     <header class="top">
-      <span id="state" class="state"><i class="dot"></i><span id="state-text">불러오는 중…</span></span>
+      <span id="state" class="state"
+        ><i class="dot"></i><span id="state-text">불러오는 중…</span></span
+      >
       <span id="date" class="date"></span>
     </header>
 
@@ -15,7 +17,9 @@
       <button class="tab" data-tab="records">근태</button>
       <button class="tab" data-tab="team">휴가</button>
       <button class="tab" data-tab="crew">팀근태</button>
-      <button class="tab" data-tab="alerts">알림<span id="alert-badge" class="tab-badge" hidden></span></button>
+      <button class="tab" data-tab="alerts">
+        알림<span id="alert-badge" class="tab-badge" hidden></span>
+      </button>
     </nav>
 
     <main>
@@ -26,10 +30,19 @@
         </div>
 
         <div id="today-body" hidden>
-          <button id="hero-toggle" class="hero-toggle" title="클릭하면 다른 값으로 바뀝니다">
+          <button
+            id="hero-toggle"
+            class="hero-toggle"
+            title="클릭하면 다른 값으로 바뀝니다"
+          >
             <span class="hero-head">
               <span class="hero-label">
-                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/></svg>
+                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M8 3 4 7l4 4" />
+                  <path d="M4 7h16" />
+                  <path d="m16 21 4-4-4-4" />
+                  <path d="M20 17H4" />
+                </svg>
                 <span id="hero-label">오늘 근무 시간</span>
               </span>
               <span id="hero-pill" class="hero-pill"></span>
@@ -45,20 +58,37 @@
 
           <dl class="rows">
             <div class="row">
-              <dt>오늘 남은 시간 <span id="daily-label" class="hint">8시간 기준</span></dt>
+              <dt>
+                오늘 남은 시간
+                <span id="daily-label" class="hint">8시간 기준</span>
+              </dt>
               <dd id="today-remaining">-</dd>
             </div>
-            <div class="row"><dt>이번 달 초과·부족</dt><dd id="balance">-</dd></div>
-            <div class="row"><dt>하루 권장 평균 <span class="hint">남은 날 기준</span></dt><dd id="rec-avg">-</dd></div>
-            <div class="row"><dt>이번 달 부족한 시간</dt><dd id="shortage">-</dd></div>
-            <div class="row"><dt>남은 근무일</dt><dd id="remaining">-</dd></div>
+            <div class="row">
+              <dt>이번 달 초과·부족</dt>
+              <dd id="balance">-</dd>
+            </div>
+            <div class="row">
+              <dt>하루 권장 평균 <span class="hint">남은 날 기준</span></dt>
+              <dd id="rec-avg">-</dd>
+            </div>
+            <div class="row">
+              <dt>이번 달 부족한 시간</dt>
+              <dd id="shortage">-</dd>
+            </div>
+            <div class="row">
+              <dt>남은 근무일</dt>
+              <dd id="remaining">-</dd>
+            </div>
           </dl>
 
           <label class="toggle-row">
             <span class="toggle-text">오늘 근무 시간 포함</span>
             <span class="switch">
               <input type="checkbox" id="include-today" checked />
-              <span class="switch-track"><span class="switch-thumb"></span></span>
+              <span class="switch-track"
+                ><span class="switch-thumb"></span
+              ></span>
             </span>
           </label>
           <div id="warn" class="warn" hidden></div>
@@ -74,10 +104,21 @@
           </div>
           <p class="ver-note" id="ver-note">최신인지 확인하는 중…</p>
           <div class="ver-actions">
-            <button id="ver-check" class="btn btn-quiet" type="button">다시 확인</button>
+            <button id="ver-check" class="btn btn-quiet" type="button">
+              다시 확인
+            </button>
             <button id="ver-folder" class="btn" type="button">폴더 설정</button>
-            <span id="ver-folder-check" class="folder-check" title="폴더 설정됨" aria-label="폴더 설정됨" hidden>✓</span>
-            <button id="ver-get" class="btn" type="button" hidden>업데이트</button>
+            <span
+              id="ver-folder-check"
+              class="folder-check"
+              title="폴더 설정됨"
+              aria-label="폴더 설정됨"
+              hidden
+              >✓</span
+            >
+            <button id="ver-get" class="btn" type="button" hidden>
+              업데이트
+            </button>
           </div>
         </div>
 
@@ -86,7 +127,9 @@
         <div class="my-empcd">
           <span class="my-empcd-label">내 사번</span>
           <span id="my-empcd" class="my-empcd-val">-</span>
-          <button id="copy-empcd" class="btn btn-quiet" type="button">복사</button>
+          <button id="copy-empcd" class="btn btn-quiet" type="button">
+            복사
+          </button>
         </div>
 
         <hr class="sep" />
@@ -113,19 +156,43 @@
 
       <section id="panel-records" class="panel" hidden>
         <div class="month-nav">
-          <button id="prev-month" class="nav-btn" title="이전 달" aria-label="이전 달"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></button>
+          <button
+            id="prev-month"
+            class="nav-btn"
+            title="이전 달"
+            aria-label="이전 달"
+          >
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="m15 18-6-6 6-6" />
+            </svg>
+          </button>
           <span id="month-label">-</span>
-          <button id="next-month" class="nav-btn" title="다음 달" aria-label="다음 달"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button>
+          <button
+            id="next-month"
+            class="nav-btn"
+            title="다음 달"
+            aria-label="다음 달"
+          >
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="m9 18 6-6-6-6" />
+            </svg>
+          </button>
         </div>
 
         <p id="cal-hint" class="cal-hint">
-          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 13V5a2 2 0 0 1 4 0v6"/><path d="M12 11V4a2 2 0 0 1 4 0v7"/><path d="M16 11V6a2 2 0 0 1 4 0v9a6 6 0 0 1-6 6h-2a7 7 0 0 1-6.7-5l-1-3.4a2 2 0 0 1 3.7-1.3l.6 1.7"/></svg>
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M8 13V5a2 2 0 0 1 4 0v6" />
+            <path d="M12 11V4a2 2 0 0 1 4 0v7" />
+            <path
+              d="M16 11V6a2 2 0 0 1 4 0v9a6 6 0 0 1-6 6h-2a7 7 0 0 1-6.7-5l-1-3.4a2 2 0 0 1 3.7-1.3l.6 1.7"
+            />
+          </svg>
           날짜를 누르면 그날 일한 시간을 볼 수 있어요
         </p>
         <div id="calendar" class="cal">
           <div class="cal-head">
-            <span class="sun">일</span><span>월</span><span>화</span><span>수</span>
-            <span>목</span><span>금</span><span>토</span>
+            <span class="sun">일</span><span>월</span><span>화</span
+            ><span>수</span> <span>목</span><span>금</span><span>토</span>
           </div>
           <div id="cal-grid" class="cal-grid"></div>
         </div>
@@ -137,7 +204,9 @@
             <p class="lb-title">남은 연차</p>
             <span class="lb-used" id="lb-used"></span>
           </div>
-          <p class="lb-value"><span id="lb-num">-</span><span class="lb-unit">일</span></p>
+          <p class="lb-value">
+            <span id="lb-num">-</span><span class="lb-unit">일</span>
+          </p>
           <ul class="lb-kinds" id="lb-kinds"></ul>
         </div>
 
@@ -154,16 +223,42 @@
       </section>
       <section id="panel-team" class="panel" hidden>
         <div class="month-nav">
-          <button id="team-prev" class="nav-btn" title="이전 달" aria-label="이전 달"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></button>
+          <button
+            id="team-prev"
+            class="nav-btn"
+            title="이전 달"
+            aria-label="이전 달"
+          >
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="m15 18-6-6 6-6" />
+            </svg>
+          </button>
           <span id="team-month">-</span>
-          <button id="team-next" class="nav-btn" title="다음 달" aria-label="다음 달"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button>
+          <button
+            id="team-next"
+            class="nav-btn"
+            title="다음 달"
+            aria-label="다음 달"
+          >
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="m9 18 6-6-6-6" />
+            </svg>
+          </button>
         </div>
 
         <div class="team-filter">
-          <button id="team-scope" class="scope-btn" type="button" aria-haspopup="listbox" aria-expanded="false">
+          <button
+            id="team-scope"
+            class="scope-btn"
+            type="button"
+            aria-haspopup="listbox"
+            aria-expanded="false"
+          >
             <span id="team-scope-label" class="scope-label">전체 부서</span>
             <span id="team-scope-count" class="scope-count"></span>
-            <svg class="icon chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+            <svg class="icon chev" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="m6 9 6 6 6-6" />
+            </svg>
           </button>
 
           <div id="scope-menu" class="scope-menu" role="listbox" hidden>
@@ -171,7 +266,12 @@
             <p class="scope-sep">부서</p>
             <div class="scope-list" id="scope-list"></div>
             <button id="team-edit" class="scope-foot" type="button">
-              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6"/><path d="M22 11h-6"/></svg>
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                <circle cx="9" cy="7" r="4" />
+                <path d="M19 8v6" />
+                <path d="M22 11h-6" />
+              </svg>
               내 그룹 편집하기
             </button>
           </div>
@@ -179,8 +279,8 @@
 
         <div class="cal">
           <div class="cal-head">
-            <span class="sun">일</span><span>월</span><span>화</span><span>수</span>
-            <span>목</span><span>금</span><span>토</span>
+            <span class="sun">일</span><span>월</span><span>화</span
+            ><span>수</span> <span>목</span><span>금</span><span>토</span>
           </div>
           <div id="team-grid" class="cal-grid"></div>
         </div>
@@ -197,9 +297,16 @@
 
       <section id="panel-crew" class="panel" hidden>
         <div class="crew-top">
-          <p class="label">우리 팀 근태 <span id="crew-date" class="crew-date"></span></p>
+          <p class="label">
+            우리 팀 근태 <span id="crew-date" class="crew-date"></span>
+          </p>
           <button id="crew-manage" class="text-btn" type="button">
-            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6"/><path d="M22 11h-6"/></svg>
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+              <circle cx="9" cy="7" r="4" />
+              <path d="M19 8v6" />
+              <path d="M22 11h-6" />
+            </svg>
             팀원 관리
           </button>
         </div>
@@ -214,7 +321,9 @@
           <p class="label">알림</p>
           <span class="alerts-actions">
             <span id="alert-count" class="alert-count"></span>
-            <button id="alert-read-all" class="text-btn" type="button" hidden>모두 읽음</button>
+            <button id="alert-read-all" class="text-btn" type="button" hidden>
+              모두 읽음
+            </button>
           </span>
         </div>
         <ul id="alert-list" class="alert-list"></ul>
@@ -222,36 +331,81 @@
         <p id="alert-loading" class="empty" hidden>불러오는 중…</p>
         <div id="alert-notice" class="notice" hidden>
           <p id="alert-notice-text"></p>
-          <button id="alert-notice-action" class="btn" hidden>그룹웨어 열기</button>
+          <button id="alert-notice-action" class="btn" hidden>
+            그룹웨어 열기
+          </button>
         </div>
         <p id="alert-poll" class="note"></p>
       </section>
-
     </main>
 
     <footer class="foot">
       <span id="fetched">-</span>
       <span class="foot-actions">
-        <button id="refresh" class="link" title="새로고침"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3v6h-6"/></svg><span id="refresh-text">새로고침</span></button>
-        <button id="open-settings" class="link" title="설정"><span id="settings-label">설정</span><span id="settings-alert-icon" class="settings-alert-icon" aria-label="새 알림" role="img" hidden></span></button>
-        <button id="open-gw" class="link">그룹웨어<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg></button>
+        <button id="refresh" class="link" title="새로고침">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M21 12a9 9 0 1 1-2.6-6.4" />
+            <path d="M21 3v6h-6" /></svg
+          ><span id="refresh-text">새로고침</span>
+        </button>
+        <button id="open-settings" class="link" title="설정">
+          <span id="settings-label">설정</span
+          ><span
+            id="settings-alert-icon"
+            class="settings-alert-icon"
+            aria-label="새 알림"
+            role="img"
+            hidden
+          ></span>
+        </button>
+        <button id="open-gw" class="link">
+          그룹웨어<svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M15 3h6v6" />
+            <path d="M10 14 21 3" />
+            <path
+              d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"
+            />
+          </svg>
+        </button>
       </span>
     </footer>
 
-
     <div id="group-modal" class="modal" hidden>
       <div class="modal-scrim" data-close="group"></div>
-      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="ge-title">
+      <div
+        class="modal-card"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="ge-title"
+      >
         <div class="modal-head">
           <p id="ge-title" class="modal-title">내 그룹 편집하기</p>
-          <button id="ge-close" class="icon-btn" type="button" title="닫기" aria-label="닫기" data-close="group">
-            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+          <button
+            id="ge-close"
+            class="icon-btn"
+            type="button"
+            title="닫기"
+            aria-label="닫기"
+            data-close="group"
+          >
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M18 6 6 18" />
+              <path d="m6 6 12 12" />
+            </svg>
           </button>
         </div>
 
         <div class="modal-search">
-          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-          <input id="ge-search" type="search" placeholder="이름 또는 부서로 검색" autocomplete="off" />
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="11" cy="11" r="7" />
+            <path d="m20 20-3.5-3.5" />
+          </svg>
+          <input
+            id="ge-search"
+            type="search"
+            placeholder="이름 또는 부서로 검색"
+            autocomplete="off"
+          />
         </div>
 
         <p id="ge-status" class="ge-status">선택 <b id="ge-count">0</b>명</p>
@@ -259,11 +413,15 @@
         <div class="ge-scroll">
           <ul id="ge-list" class="ge-list"></ul>
           <p id="ge-empty" class="ge-empty" hidden>찾는 이름이 없어요.</p>
-          <p id="ge-loading" class="ge-empty" hidden>직원 목록을 불러오는 중…</p>
+          <p id="ge-loading" class="ge-empty" hidden>
+            직원 목록을 불러오는 중…
+          </p>
         </div>
 
         <div class="modal-foot">
-          <button id="ge-clear" class="btn btn-quiet" type="button">모두 해제</button>
+          <button id="ge-clear" class="btn btn-quiet" type="button">
+            모두 해제
+          </button>
           <button id="ge-done" class="btn" type="button">완료</button>
         </div>
       </div>
@@ -271,21 +429,46 @@
 
     <div id="crew-modal" class="modal" hidden>
       <div class="modal-scrim" data-close="crew"></div>
-      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="crew-title">
+      <div
+        class="modal-card"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="crew-title"
+      >
         <div class="modal-head">
           <p id="crew-title" class="modal-title">팀원 관리</p>
-          <button id="crew-close" class="icon-btn" type="button" title="닫기" aria-label="닫기" data-close="crew">
-            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+          <button
+            id="crew-close"
+            class="icon-btn"
+            type="button"
+            title="닫기"
+            aria-label="닫기"
+            data-close="crew"
+          >
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M18 6 6 18" />
+              <path d="m6 6 12 12" />
+            </svg>
           </button>
         </div>
 
         <div class="crew-body">
           <section class="crew-sec">
             <p class="crew-sec-title">내 공유 코드</p>
-            <p class="crew-sec-hint" id="crew-code-hint">이 코드를 팀원에게 보내면, 그 사람 확장에 내 출근 시간이 보여요.</p>
-            <p class="crew-code-warn" id="crew-code-warn" hidden>내 이름이 아직 안 잡혔어요. 팀근태 탭을 열거나 그룹웨어에 접속하면 이름이 채워져요.</p>
+            <p class="crew-sec-hint" id="crew-code-hint">
+              이 코드를 팀원에게 보내면, 그 사람 확장에 내 출근 시간이 보여요.
+            </p>
+            <p class="crew-code-warn" id="crew-code-warn" hidden>
+              내 이름이 아직 안 잡혔어요. 팀근태 탭을 열거나 그룹웨어에 접속하면
+              이름이 채워져요.
+            </p>
             <div class="crew-code">
-              <input id="crew-mycode" type="text" readonly value="불러오는 중…" />
+              <input
+                id="crew-mycode"
+                type="text"
+                readonly
+                value="불러오는 중…"
+              />
               <button id="crew-copy" class="btn" type="button">복사</button>
             </div>
           </section>
@@ -293,19 +476,35 @@
           <section class="crew-sec">
             <p class="crew-sec-title">팀원 추가</p>
             <div class="crew-ways">
-              <div class="way"><span class="way-dot"></span><span class="way-txt"><b>이름과 사번</b></span><span class="w-ex">홍길동 20260000</span></div>
+              <div class="way">
+                <span class="way-dot"></span
+                ><span class="way-txt"><b>이름과 사번</b></span
+                ><span class="w-ex">홍길동 20260000</span>
+              </div>
               <div class="way-or">또는</div>
-              <div class="way"><span class="way-dot"></span><span class="way-txt">받은 <b>공유 코드</b></span><span class="w-ex">GWA1:…</span></div>
+              <div class="way">
+                <span class="way-dot"></span
+                ><span class="way-txt">받은 <b>공유 코드</b></span
+                ><span class="w-ex">GWA1:…</span>
+              </div>
             </div>
-            <textarea id="crew-paste" rows="3" placeholder="홍길동 20260000&#10;GWA1:… (공유 코드)"></textarea>
+            <textarea
+              id="crew-paste"
+              rows="3"
+              placeholder="홍길동 20260000&#10;GWA1:… (공유 코드)"
+            ></textarea>
             <button id="crew-add-code" class="btn" type="button">추가</button>
             <p id="crew-msg" class="crew-msg" hidden></p>
           </section>
 
           <section class="crew-sec">
-            <p class="crew-sec-title">등록된 팀원 <span id="crew-count" class="crew-count">0</span></p>
+            <p class="crew-sec-title">
+              등록된 팀원 <span id="crew-count" class="crew-count">0</span>
+            </p>
             <ul id="crew-reg" class="crew-reg"></ul>
-            <p id="crew-reg-empty" class="crew-sec-hint">아직 없어요. 위에서 추가해 주세요.</p>
+            <p id="crew-reg-empty" class="crew-sec-hint">
+              아직 없어요. 위에서 추가해 주세요.
+            </p>
           </section>
         </div>
       </div>
