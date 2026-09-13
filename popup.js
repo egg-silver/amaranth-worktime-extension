@@ -3,16 +3,15 @@
 import {
   formatDuration,
   formatClock,
+  formatRestLabel,
   parseDate,
-  lunchDeduction,
+  workedMinutes,
+  isInRest,
   normalizeStatus,
   buildTeamCalendar,
   shiftMonth,
-  expandLeaves,
   weekHasSmartDay,
   STANDARD_MINUTES,
-  LUNCH_START,
-  LUNCH_END,
 } from "./lib/calc.js";
 import {
   isUnread,
@@ -107,16 +106,16 @@ function heroContent(status, view) {
     return {
       label: "퇴근 가능 시각",
       value:
-        at != null
-          ? formatClock(at)
-          : status.state === "done"
+        at == null
+          ? status.state === "done"
             ? "퇴근 완료"
-            : "출근 전",
+            : "출근 전"
+          : formatClock(at),
       pill: `권장 ${formatDuration(status.todayTarget || day)}`,
       sub:
-        status.comeMinutes != null
-          ? `${formatClock(status.comeMinutes)} 출근 · 휴게 12–13시 제외`
-          : "출근을 찍으면 계산됩니다",
+        status.comeMinutes == null
+          ? "출근을 찍으면 계산됩니다"
+          : `${formatClock(status.comeMinutes)} 출근 · ${formatRestLabel(status.restIntervals, status.restExceptMinutes)}`,
       bar: { ...dayBar, left: `${formatDuration(status.todayWorked)} 근무` },
     };
   }
@@ -212,7 +211,12 @@ function renderToday(rawStatus, fetchedAt, staleNote) {
   stateEl.className = "state";
   if (status.state === "working") {
     const nowMin = new Date().getHours() * 60 + new Date().getMinutes();
-    if (nowMin >= LUNCH_START && nowMin < LUNCH_END) {
+    if (
+      isInRest(nowMin, {
+        intervals: status.restIntervals,
+        exceptMin: status.restExceptMinutes,
+      })
+    ) {
       stateEl.classList.add("is-break");
       $("state-text").textContent = "휴게 중";
     } else {
@@ -260,15 +264,15 @@ function renderToday(rawStatus, fetchedAt, staleNote) {
   $("shortage").textContent =
     eff.shortage > 0 ? formatDuration(eff.shortage) : "다 채웠어요";
   $("remaining").textContent =
-    status.monthWorkDays != null
-      ? `${status.remainingWorkDays}/${status.monthWorkDays}일`
-      : `${status.remainingWorkDays}일`;
+    status.monthWorkDays == null
+      ? `${status.remainingWorkDays}일`
+      : `${status.remainingWorkDays}/${status.monthWorkDays}일`;
 
   const warn = $("warn");
   const notes = [];
   if (status.missingLeave.length) {
     notes.push(
-      `퇴근 미등록 <b>${status.missingLeave.length}일</b> — ${status.missingLeave
+      `퇴근 미등록 ${status.missingLeave.length}일 — ${status.missingLeave
         .map(shortDate)
         .join(", ")}`,
     );
@@ -276,10 +280,13 @@ function renderToday(rawStatus, fetchedAt, staleNote) {
   if (staleNote) notes.push(staleNote);
   warn.hidden = notes.length === 0;
   if (notes.length) {
-    warn.innerHTML = "";
+    warn.replaceChildren();
     warn.appendChild(icon("alert"));
     const body = document.createElement("span");
-    body.innerHTML = notes.join("<br>");
+    notes.forEach((note, i) => {
+      if (i) body.appendChild(document.createElement("br"));
+      body.append(note);
+    });
     warn.appendChild(body);
   }
 
@@ -461,7 +468,7 @@ function renderDayDetail(cell) {
   else add(cell.resultName || "기록 없음");
 }
 
-function renderCalendar(calendar, status) {
+function renderCalendar(calendar) {
   const grid = $("cal-grid");
   grid.innerHTML = "";
   renderDayDetail(null);
@@ -602,7 +609,12 @@ function icon(name) {
   svg.setAttribute("class", "icon");
   svg.setAttribute("viewBox", "0 0 24 24");
   svg.setAttribute("aria-hidden", "true");
-  svg.innerHTML = ICON_PATHS[name] || "";
+  const markup = ICON_PATHS[name] || "";
+  for (const m of markup.matchAll(/<path d="([^"]+)"\s*\/>/g)) {
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", m[1]);
+    svg.appendChild(path);
+  }
   return svg;
 }
 
@@ -624,7 +636,7 @@ async function checkWorker() {
     const res = await chrome.runtime.sendMessage({ type: "ping" });
     if (!res) return "stale"; // ping 을 모르는 예전 워커
     return res.build === EXPECTED_BUILD ? "ok" : "stale";
-  } catch (err) {
+  } catch {
     return "dead"; // 워커가 아예 뜨지 않음
   }
 }
@@ -793,7 +805,7 @@ function renderTeamCalendar(calendar) {
   if (!calendar?.weeks) return;
 
   const cells = calendar.weeks.flat().filter((c) => c && !c.outside);
-  let pick =
+  const pick =
     cells.find((c) => c.date === teamSelected) ||
     cells.find((c) => c.isToday) ||
     cells.find((c) => c.count > 0) ||
@@ -1326,15 +1338,15 @@ function renderCrew(people) {
     const come = fmtHHMM(p.comeTm);
     const leave = fmtHHMM(p.leaveTm);
     const leaveLabel = fullLeaveName(p.leaveName);
-    const state = !p.ok
-      ? "err"
-      : leave
+    const state = p.ok
+      ? leave
         ? "done"
         : come
           ? "working"
           : leaveLabel
             ? "leave"
-            : "off";
+            : "off"
+      : "err";
 
     const li = document.createElement("li");
     li.className = "crew-row" + (p.isMe ? " is-me" : "") + ` is-${state}`;
@@ -2037,17 +2049,23 @@ function crewCalRender() {
     $("crew-cal-next").disabled = y >= +today.slice(0, 4);
     grid.classList.add("months");
     const selYm = crewCalYm;
-    let html = "";
+    grid.replaceChildren();
     for (let mm = 1; mm <= 12; mm++) {
       const ym = `${y}${String(mm).padStart(2, "0")}`;
-      const cls = ["crew-cal-mcell"];
-      if (ym === today.slice(0, 6)) cls.push("today");
-      if (ym === selYm) cls.push("sel");
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "crew-cal-mcell";
+      if (ym === today.slice(0, 6)) btn.classList.add("today");
+      if (ym === selYm) btn.classList.add("sel");
       const future = ym > today.slice(0, 6);
-      if (future) cls.push("disabled");
-      html += `<button type="button" class="${cls.join(" ")}" data-ym="${ym}"${future ? " disabled" : ""}>${mm}월</button>`;
+      if (future) {
+        btn.classList.add("disabled");
+        btn.disabled = true;
+      }
+      btn.dataset.ym = ym;
+      btn.textContent = `${mm}월`;
+      grid.appendChild(btn);
     }
-    grid.innerHTML = html;
     return;
   }
 
@@ -2059,23 +2077,32 @@ function crewCalRender() {
   grid.classList.remove("months");
   const lead = new Date(y, m - 1, 1).getDay(); // 0=일
   const days = new Date(y, m, 0).getDate();
-  const p = (n) => String(n).padStart(2, "0");
-  let html = "";
-  for (let i = 0; i < lead; i++)
-    html += '<span class="crew-cal-cell empty"></span>';
-  for (let d = 1; d <= days; d++) {
-    const ymd = `${y}${p(m)}${p(d)}`;
-    const dow = (lead + d - 1) % 7;
-    const cls = ["crew-cal-cell"];
-    if (dow === 0) cls.push("sun");
-    if (dow === 6) cls.push("sat");
-    if (ymd === today) cls.push("today");
-    if (ymd === sel) cls.push("sel");
-    const future = ymd > today;
-    if (future) cls.push("disabled");
-    html += `<button type="button" class="${cls.join(" ")}" data-ymd="${ymd}"${future ? " disabled" : ""}>${d}</button>`;
+  const pad = (n) => String(n).padStart(2, "0");
+  grid.replaceChildren();
+  for (let i = 0; i < lead; i++) {
+    const empty = document.createElement("span");
+    empty.className = "crew-cal-cell empty";
+    grid.appendChild(empty);
   }
-  grid.innerHTML = html;
+  for (let d = 1; d <= days; d++) {
+    const ymd = `${y}${pad(m)}${pad(d)}`;
+    const dow = (lead + d - 1) % 7;
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "crew-cal-cell";
+    if (dow === 0) btn.classList.add("sun");
+    if (dow === 6) btn.classList.add("sat");
+    if (ymd === today) btn.classList.add("today");
+    if (ymd === sel) btn.classList.add("sel");
+    const future = ymd > today;
+    if (future) {
+      btn.classList.add("disabled");
+      btn.disabled = true;
+    }
+    btn.dataset.ymd = ymd;
+    btn.textContent = String(d);
+    grid.appendChild(btn);
+  }
 }
 
 function crewCalShift(delta) {
@@ -2268,10 +2295,10 @@ tickTimer = setInterval(() => {
   const now = new Date();
   const nowMin = now.getHours() * 60 + now.getMinutes();
   if (current.comeMinutes == null) return;
-  current.todayProgress = Math.max(
-    0,
-    nowMin - current.comeMinutes - lunchDeduction(current.comeMinutes, nowMin),
-  );
+  current.todayProgress = workedMinutes(current.comeMinutes, nowMin, {
+    intervals: current.restIntervals,
+    exceptMin: current.restExceptMinutes,
+  });
   current.accumulated = current.confirmed + current.todayProgress;
   current.todayWorked = current.todayProgress;
   current.todayRemainingByDaily = Math.max(

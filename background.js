@@ -33,6 +33,8 @@ import { setUnreadDot } from "./lib/icon.js";
 import {
   computeStatus,
   parseDate,
+  parseExceptWorkMinutes,
+  workedMinutes,
   buildCalendar,
   buildTeamCalendar,
   attachCrewLeaves,
@@ -129,14 +131,14 @@ function withTodayCommute(rows, today, commute, dailyMinutes, nowMin) {
   const toMin = (t) => (t ? Number(t.slice(0, 2)) * 60 + Number(t.slice(2)) : null);
   const c = toMin(come);
   const l = leave ? toMin(leave) : nowMin != null ? nowMin : null;
-  let worked = 0;
-  if (c != null && l != null && l > c) {
-    const lunch = Math.max(0, Math.min(l, 13 * 60) - Math.max(c, 12 * 60));
-    worked = l - c - lunch;
-  }
 
   const out = rows.map((r) => ({ ...r }));
   const idx = out.findIndex((r) => r.atDt === today);
+  const exceptMin = parseExceptWorkMinutes(idx >= 0 ? out[idx] : null);
+  let worked = 0;
+  if (c != null && l != null && l > c) {
+    worked = workedMinutes(c, l, { exceptMin });
+  }
   const patch = {
     atDt: today,
     comeTm: come,

@@ -13,6 +13,11 @@ import {
   workDayBreakdown,
   estimateLeaveTime,
   lunchDeduction,
+  progressRestDeduction,
+  parseExceptWorkMinutes,
+  workedMinutes,
+  isInRest,
+  formatRestLabel,
   formatClock,
   formatDuration,
   parseTimeToMinutes,
@@ -48,6 +53,33 @@ test('점심시간은 근무 구간과 겹치는 만큼만 빠진다', () => {
   assert.equal(lunchDeduction(9 * 60, 12 * 60 + 20), 20); // 점심 중간 퇴근
 });
 
+test('서버 exceptworkTm 은 빈 껍데기의 0 과 면제를 구분한다', () => {
+  assert.equal(parseExceptWorkMinutes(null), null);
+  assert.equal(parseExceptWorkMinutes(row('20260902')), null); // 빈 행의 0 은 모름
+  assert.equal(parseExceptWorkMinutes(row('20260902', { exceptworkTm: '90' })), 90);
+  assert.equal(
+    parseExceptWorkMinutes({ ...workday('20260902', '0900', '1800', 480), exceptworkTm: '0' }),
+    0,
+    '기록된 날의 0 은 휴게 면제'
+  );
+});
+
+test('진행분 휴게는 exceptworkTm 총량을 따른다', () => {
+  const day = { start: 9 * 60, lunch: 15 * 60, after: 14 * 60 };
+  assert.equal(progressRestDeduction(day.start, day.lunch), 60);
+  assert.equal(progressRestDeduction(day.start, day.lunch, { exceptMin: 0 }), 0);
+  assert.equal(progressRestDeduction(day.start, 12 * 60 + 15, { exceptMin: 30 }), 15);
+  assert.equal(progressRestDeduction(day.start, day.lunch, { exceptMin: 30 }), 30);
+  assert.equal(progressRestDeduction(day.start, 12 * 60 + 30, { exceptMin: 90 }), 30);
+  assert.equal(progressRestDeduction(day.start, day.after, { exceptMin: 90 }), 90);
+  assert.equal(workedMinutes(9 * 60, 15 * 60, { exceptMin: 90 }), 270);
+  assert.equal(isInRest(12 * 60 + 10, { exceptMin: 0 }), false);
+  assert.equal(isInRest(12 * 60 + 10), true);
+  assert.equal(formatRestLabel(undefined, null), '휴게 12–13시 제외');
+  assert.equal(formatRestLabel(undefined, 90), '휴게 1시간 30분 제외');
+  assert.equal(formatRestLabel(undefined, 0), '휴게 없음');
+});
+
 test('퇴근 가능 시각은 점심을 지나면 그만큼 밀린다', () => {
   // 09:00 출근 + 8시간 근무 → 점심 60분 포함해 18:00
   assert.equal(formatClock(estimateLeaveTime(9 * 60, 480)), '18:00');
@@ -57,6 +89,36 @@ test('퇴근 가능 시각은 점심을 지나면 그만큼 밀린다', () => {
   assert.equal(formatClock(estimateLeaveTime(11 * 60 + 30, 120)), '14:30');
   // 09:00 출근 + 2시간 → 점심 전에 끝나므로 11:00
   assert.equal(formatClock(estimateLeaveTime(9 * 60, 120)), '11:00');
+  // 휴게 면제면 60분이 밀리지 않고, 90분이면 그만큼 더 밀린다.
+  assert.equal(formatClock(estimateLeaveTime(9 * 60, 480, { exceptMin: 0 })), '17:00');
+  assert.equal(formatClock(estimateLeaveTime(9 * 60, 480, { exceptMin: 90 })), '18:30');
+});
+
+test('오늘 진행분은 서버 exceptworkTm 을 반영한다', () => {
+  const extra = computeStatus({
+    rows: [row('20260902', { exceptworkTm: '90' })],
+    holidays: [],
+    today: '20260902',
+    nowMin: 15 * 60,
+    comeTm: '202609020900',
+    leaveTm: '',
+  });
+  // 09:00~15:00 = 360분, 휴게 90분 → 270분. 8시간 기준 퇴근은 18:30.
+  assert.equal(extra.todayProgress, 270);
+  assert.equal(extra.restExceptMinutes, 90);
+  assert.equal(formatClock(extra.dailyLeave), '18:30');
+
+  const unknown = computeStatus({
+    rows: [row('20260902', { exceptworkTm: '0' })],
+    holidays: [],
+    today: '20260902',
+    nowMin: 15 * 60,
+    comeTm: '202609020900',
+    leaveTm: '',
+  });
+  // 빈 껍데기의 0 은 아직 모름 → 기본 점심 60분.
+  assert.equal(unknown.todayProgress, 300);
+  assert.equal(unknown.restExceptMinutes, null);
 });
 
 test('끝난 달은 서버 확정값만으로 집계한다', () => {
