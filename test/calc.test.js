@@ -7,6 +7,7 @@ import {
   monthRange,
   shiftMonth,
   expandLeaves,
+  attachCrewLeaves,
   buildCalendar,
   buildTeamCalendar,
   workDayBreakdown,
@@ -408,6 +409,42 @@ test('시각·시간 포맷', () => {
   assert.equal(formatDuration(500), '8시간 20분');
   assert.equal(formatDuration(480), '8시간');
   assert.equal(formatDuration(20), '20분');
+});
+
+test('팀근태 명단에 그날 휴가명을 이름으로 붙인다', () => {
+  const leaves = [
+    { start: '202609040900', end: '202609041800', person: '김철수', name: '연차', isMe: false },
+    { start: '202609040830', end: '202609041330', person: '나', name: '오전반차', isMe: true },
+    { start: '202609210900', end: '202609231800', person: '이영희', name: '연차', isMe: false },
+  ];
+  const people = attachCrewLeaves(
+    [
+      { name: '나', empCd: '1', isMe: true, comeTm: '' },
+      { name: '김철수', empCd: '2', comeTm: '' },
+      { name: '박민수', empCd: '3', comeTm: '0900' },
+    ],
+    leaves,
+    '20260904',
+  );
+  assert.equal(people[0].leaveName, '오전반차');
+  assert.equal(people[1].leaveName, '연차');
+  assert.equal(people[2].leaveName, null);
+});
+
+test('이미 있는 휴가명은 덮지 않고, 같은 휴가는 한 사람에게만 준다', () => {
+  const leaves = [
+    { start: '202609040900', end: '202609041800', person: '김철수', name: '연차', isMe: false },
+  ];
+  const people = attachCrewLeaves(
+    [
+      { name: '김철수', empCd: '2', leaveName: '오전반차' },
+      { name: '김철수', empCd: '9' },
+    ],
+    leaves,
+    '20260904',
+  );
+  assert.equal(people[0].leaveName, '오전반차');
+  assert.equal(people[1].leaveName, '연차');
 });
 
 test('팀 근태 달력은 날짜마다 쉬는 사람을 모은다', () => {

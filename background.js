@@ -35,6 +35,7 @@ import {
   parseDate,
   buildCalendar,
   buildTeamCalendar,
+  attachCrewLeaves,
   formatDate,
   monthRange,
   shiftMonth,
@@ -411,20 +412,44 @@ async function loadTeamAttendance(reqDate) {
   const credentials = await readCredentials();
   const today = todayStamp();
   // 유효한 날짜이고 미래가 아니면 그 날, 아니면 오늘.
-  const date =
-    /^\d{8}$/.test(reqDate) && reqDate <= today ? reqDate : today;
-  const rows = await fetchTeamAttendance(credentials, {
-    coCd: identity.coCd,
-    date,
-    members: all,
-  });
+  const date = /^\d{8}$/.test(reqDate) && reqDate <= today ? reqDate : today;
+  const ym = date.slice(0, 6);
+  const { from, to } = monthRange(ym);
+  const teamKey = `team:${ym}`;
+
+  const [rows, leaves] = await Promise.all([
+    fetchTeamAttendance(credentials, {
+      coCd: identity.coCd,
+      date,
+      members: all,
+    }),
+    // 휴가 탭과 같은 근태캘린더. 실패해도 출퇴근은 보여 준다.
+    (async () => {
+      const cached = await readCache(teamKey);
+      if (cached) return cached;
+      try {
+        const list = await fetchTeamLeaves(credentials, identity, {
+          from,
+          to,
+        });
+        await writeCache(teamKey, list || []);
+        return list || [];
+      } catch {
+        return [];
+      }
+    })(),
+  ]);
 
   // isMe 표시를 살려서 돌려준다.
   const byCd = new Map(all.map((m) => [m.empCd, m]));
+  const people = rows.map((r) => ({
+    ...r,
+    isMe: !!byCd.get(r.empCd)?.isMe,
+  }));
   return {
     ok: true,
     date,
-    people: rows.map((r) => ({ ...r, isMe: !!byCd.get(r.empCd)?.isMe })),
+    people: attachCrewLeaves(people, leaves, date),
     fetchedAt: Date.now(),
   };
 }
@@ -1025,7 +1050,7 @@ ensureUpdateAlarm();
 // 팝업이 "지금 돌고 있는 서비스 워커가 최신인지" 확인하는 용도.
 // 팝업 파일은 열 때마다 다시 읽히지만 서비스 워커는 확장을 새로고침해야 바뀌기 때문에,
 // 이 응답이 없으면 예전 워커가 남아 있다는 뜻이다.
-const BUILD = 29;
+const BUILD = 30;
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type === "ping") {

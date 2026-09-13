@@ -613,7 +613,7 @@ function icon(name) {
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // background.js 의 BUILD 와 같은 값이어야 한다. 파일을 고칠 때 함께 올린다.
-const EXPECTED_BUILD = 29;
+const EXPECTED_BUILD = 30;
 const STALE_WORKER_MESSAGE =
   "확장을 새로고침해 주세요. chrome://extensions 에서 gw-worktime 카드의 ↻ 를 누르면 됩니다. " +
   "(팝업은 최신인데 백그라운드가 예전 버전으로 남아 있어요)";
@@ -1287,31 +1287,54 @@ function initial(name) {
   return t ? t[0] : "?";
 }
 
+function crewTag(cls, text) {
+  const s = document.createElement("span");
+  s.className = `crew-tag ${cls}`;
+  s.textContent = text;
+  return s;
+}
+
 function renderCrew(people) {
   const host = $("crew-list");
   host.innerHTML = "";
 
   const cameCount = people.filter((p) => p.ok && p.comeTm).length;
   const doneCount = people.filter((p) => p.ok && p.leaveTm).length;
-  const offCount = people.filter((p) => p.ok && !p.comeTm).length;
+  const leaveCount = people.filter(
+    (p) => p.ok && p.leaveName && !p.comeTm,
+  ).length;
+  const offCount = people.filter(
+    (p) => p.ok && !p.comeTm && !p.leaveName,
+  ).length;
   const sum = $("crew-summary");
   sum.hidden = people.length === 0;
   const bits = [];
   if (cameCount - doneCount > 0) bits.push(`근무 중 ${cameCount - doneCount}`);
   if (doneCount > 0) bits.push(`퇴근 ${doneCount}`);
+  if (leaveCount > 0) bits.push(`휴가 ${leaveCount}`);
   if (offCount > 0) bits.push(`미출근 ${offCount}`);
   sum.textContent = bits.join("  ·  ");
 
-  // 출근한 사람 먼저(이른 출근 순), 미출근은 아래로. 본인은 항상 맨 위.
+  // 출근한 사람 먼저(이른 출근 순), 휴가는 미출근보다 위. 본인은 항상 맨 위.
   const sorted = [...people].sort((a, b) => {
     if (a.isMe !== b.isMe) return a.isMe ? -1 : 1;
-    return (a.comeTm || "9999").localeCompare(b.comeTm || "9999");
+    const key = (p) => p.comeTm || (p.leaveName ? "8888" : "9999");
+    return key(a).localeCompare(key(b));
   });
 
   for (const p of sorted) {
     const come = fmtHHMM(p.comeTm);
     const leave = fmtHHMM(p.leaveTm);
-    const state = !p.ok ? "err" : leave ? "done" : come ? "working" : "off";
+    const leaveLabel = fullLeaveName(p.leaveName);
+    const state = !p.ok
+      ? "err"
+      : leave
+        ? "done"
+        : come
+          ? "working"
+          : leaveLabel
+            ? "leave"
+            : "off";
 
     const li = document.createElement("li");
     li.className = "crew-row" + (p.isMe ? " is-me" : "") + ` is-${state}`;
@@ -1344,20 +1367,34 @@ function renderCrew(people) {
     const time = document.createElement("span");
     time.className = "crew-time";
     if (!p.ok) {
-      time.innerHTML = '<span class="crew-tag err">조회 실패</span>';
+      time.appendChild(crewTag("err", "조회 실패"));
     } else if (!come) {
-      time.innerHTML = p.holiday
-        ? '<span class="crew-tag off">휴일</span>'
-        : '<span class="crew-tag off">미출근</span>';
+      if (leaveLabel) time.appendChild(crewTag("leave", leaveLabel));
+      else if (p.holiday) time.appendChild(crewTag("off", "휴일"));
+      else time.appendChild(crewTag("off", "미출근"));
     } else if (leave) {
-      const dur = p.workMin > 0 ? ` · ${formatDuration(p.workMin)}` : "";
-      time.innerHTML =
-        `<span class="clock">${come}<span class="arrow">→</span>${leave}</span>` +
-        `<span class="sub">근무 완료${dur}</span>`;
+      const clock = document.createElement("span");
+      clock.className = "clock";
+      clock.append(come);
+      const arrow = document.createElement("span");
+      arrow.className = "arrow";
+      arrow.textContent = "→";
+      clock.append(arrow, leave);
+      time.appendChild(clock);
+      if (leaveLabel) time.appendChild(crewTag("leave", leaveLabel));
+      const sub = document.createElement("span");
+      sub.className = "sub";
+      sub.textContent =
+        "근무 완료" + (p.workMin > 0 ? ` · ${formatDuration(p.workMin)}` : "");
+      time.appendChild(sub);
     } else {
-      time.innerHTML =
-        `<span class="clock">${come} 출근</span>` +
-        `<span class="crew-tag work">근무 중</span>`;
+      const clock = document.createElement("span");
+      clock.className = "clock";
+      clock.textContent = `${come} 출근`;
+      time.appendChild(clock);
+      time.appendChild(
+        leaveLabel ? crewTag("leave", leaveLabel) : crewTag("work", "근무 중"),
+      );
     }
     li.appendChild(time);
     host.appendChild(li);

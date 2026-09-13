@@ -4,9 +4,12 @@ import assert from "node:assert/strict";
 // lib/api.js 는 모듈 최상단에서 chrome 을 쓰지 않지만, 안전하게 최소 스텁을 둔다.
 globalThis.chrome ??= { cookies: { get: async () => null } };
 
-const { fetchCompanyInfo, markAlertsRead, markAllAlertsRead } = await import(
-  "../lib/api.js"
-);
+const {
+  fetchCompanyInfo,
+  markAlertsRead,
+  markAllAlertsRead,
+  fetchTeamAttendance,
+} = await import("../lib/api.js");
 
 const credentials = { token: "grp|2073|secret", signKey: "k" };
 
@@ -124,4 +127,27 @@ test("모두 읽음은 첫 호출이 실패하면 두 번째를 보내지 않는
   await assert.rejects(() => markAllAlertsRead(credentials), /실패/);
   assert.equal(calls.length, 1);
   assert.equal(calls[0].url, "https://gw.goorm.io/event/event02A04");
+});
+
+test("팀근태는 출퇴근 응답의 휴가명을 함께 돌려준다", async () => {
+  stubFetch(() => ({
+    json: {
+      resultCode: 0,
+      resultData: {
+        comeTm: "",
+        leaveTm: "",
+        holidayYn: "N",
+        atNm: "연차",
+      },
+    },
+  }));
+  const people = await fetchTeamAttendance(credentials, {
+    coCd: "1000",
+    date: "20260904",
+    members: [{ name: "김철수", empCd: "100" }],
+  });
+  assert.equal(people.length, 1);
+  assert.equal(people[0].leaveName, "연차");
+  assert.equal(people[0].comeTm, "");
+  assert.equal(people[0].ok, true);
 });

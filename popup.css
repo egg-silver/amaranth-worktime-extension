@@ -1907,6 +1907,9 @@ body.update-page {
 .crew-row.is-off .crew-dot {
  background: var(--gray-200);
 }
+.crew-row.is-leave .crew-dot {
+ background: var(--orange-500);
+}
 .crew-row.is-err .crew-dot {
  background: var(--danger);
 }
@@ -1969,6 +1972,10 @@ body.update-page {
  background: var(--gray-050);
  color: var(--faint-fg);
  font-weight: var(--font-weight-500);
+}
+.crew-tag.leave {
+ background: var(--accent-soft);
+ color: var(--accent-fg);
 }
 .crew-tag.err {
  background: var(--danger-soft);
