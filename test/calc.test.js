@@ -8,6 +8,7 @@ import {
   shiftMonth,
   expandLeaves,
   attachCrewLeaves,
+  normalizeName,
   fullDayLeaveDates,
   buildCalendar,
   buildTeamCalendar,
@@ -595,6 +596,74 @@ test("팀근태 명단에 그날 휴가명을 이름으로 붙인다", () => {
   assert.equal(people[0].leaveName, "오전반차");
   assert.equal(people[1].leaveName, "연차");
   assert.equal(people[2].leaveName, null);
+});
+
+test("닉네임으로 표기해도 실제 이름으로 휴가를 맞춘다", () => {
+  const leaves = [
+    { start: "202609040900", end: "202609041800", person: "김철수", name: "연차", isMe: false },
+  ];
+  const people = attachCrewLeaves(
+    [{ name: "철수형", realName: "김철수", empCd: "2", comeTm: "" }],
+    leaves,
+    "20260904",
+  );
+  assert.equal(people[0].leaveName, "연차");
+});
+
+test("realName 이 없던 예전 기록은 name 으로 맞춘다", () => {
+  const leaves = [
+    { start: "202609040900", end: "202609041800", person: "김철수", name: "연차", isMe: false },
+  ];
+  const people = attachCrewLeaves(
+    [{ name: "김철수", empCd: "2", comeTm: "" }],
+    leaves,
+    "20260904",
+  );
+  assert.equal(people[0].leaveName, "연차");
+});
+
+test("표기 이름만 닉네임이면 휴가가 안 붙는다 (실제 이름이 기준)", () => {
+  const leaves = [
+    { start: "202609040900", end: "202609041800", person: "김철수", name: "연차", isMe: false },
+  ];
+  const people = attachCrewLeaves(
+    [{ name: "철수형", realName: "철수형", empCd: "2", comeTm: "" }],
+    leaves,
+    "20260904",
+  );
+  assert.equal(people[0].leaveName, null);
+});
+
+test("이름 정규화: 공백·폭 없는 문자·전각 공백을 지운다", () => {
+  assert.equal(normalizeName("강 창 룡"), "강창룡");
+  assert.equal(normalizeName("강창룡\u200b"), "강창룡");
+  assert.equal(normalizeName("한민웅\u3000"), "한민웅");
+  assert.equal(normalizeName(" 김진성 "), "김진성");
+  assert.equal(normalizeName("Sammy Kim"), "sammykim");
+});
+
+test("이름 사이 공백이 달라도 휴가가 붙는다", () => {
+  const leaves = [
+    { start: "202609040900", end: "202609041300", person: "강 창 룡", name: "오전반차" },
+  ];
+  const people = attachCrewLeaves(
+    [{ name: "강창룡", realName: "강창룡", empCd: "2", comeTm: "1003" }],
+    leaves,
+    "20260904",
+  );
+  assert.equal(people[0].leaveName, "오전반차");
+});
+
+test("폭 없는 문자가 섞여도 휴가가 붙는다", () => {
+  const leaves = [
+    { start: "202609040900", end: "202609041800", person: "한민웅\u200b", name: "연차" },
+  ];
+  const people = attachCrewLeaves(
+    [{ name: "한민웅", realName: "한민웅", empCd: "3", comeTm: "" }],
+    leaves,
+    "20260904",
+  );
+  assert.equal(people[0].leaveName, "연차");
 });
 
 test("이미 있는 휴가명은 덮지 않고, 같은 휴가는 한 사람에게만 준다", () => {

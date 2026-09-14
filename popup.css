@@ -2065,6 +2065,30 @@ body.update-page {
 .crew-msg.bad {
  color: var(--danger-fg);
 }
+/* 아래 li 와 같은 flex 규칙을 써야 열이 어긋나지 않는다. */
+.crew-reg-head {
+ display: flex;
+ align-items: center;
+ gap: var(--size-100);
+ margin-top: var(--size-100);
+ padding-bottom: 4px;
+ font-size: var(--font-size-050);
+ color: var(--faint-fg);
+ letter-spacing: var(--letter-spacing);
+}
+/* 입력이 좌우 패딩을 갖고 있어, 라벨도 같은 만큼 들여 글자 시작점을 맞춘다. */
+.crew-reg-head .h-nick,
+.crew-reg-head .h-real {
+ flex: 1 1 0;
+ min-width: 0;
+ padding: 0 var(--size-100);
+}
+/* 행에는 사번 뒤에 삭제 버튼(24px + gap)이 더 있다. 그만큼 오른쪽을 비워 맞춘다. */
+.crew-reg-head .h-cd {
+ flex: none;
+ margin-left: var(--size-075);
+ margin-right: calc(24px + var(--size-100));
+}
 .crew-reg {
  margin: var(--size-100) 0 var(--size-050);
  padding: 0;
@@ -2081,7 +2105,7 @@ body.update-page {
  border-top: 0;
 }
 .crew-reg .nm-edit {
- flex: 1;
+ flex: 1 1 0;
  min-width: 0;
  height: 30px;
  padding: 0 var(--size-100);
@@ -2093,6 +2117,11 @@ body.update-page {
  font-weight: var(--font-weight-500);
  color: var(--fg);
  letter-spacing: var(--letter-spacing);
+}
+/* 화면에 쓰는 건 표기 이름. 실제 이름은 맞춤용이라 한 단계 물린다. */
+.crew-reg .nm-edit.is-realName {
+ font-weight: var(--font-weight-400);
+ color: var(--faint-fg);
 }
 .crew-reg .nm-edit::placeholder {
  color: var(--gray-300);

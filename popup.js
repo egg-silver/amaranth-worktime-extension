@@ -13,6 +13,7 @@ import {
   formatDate,
   expandLeaves,
   isHalfLeaveName,
+  normalizeName,
   weekHasSmartDay,
   STANDARD_MINUTES,
 } from "./lib/calc.js";
@@ -814,7 +815,7 @@ function renderTeamDay(cell) {
 
     const who = document.createElement("span");
     who.className = "who";
-    who.textContent = person.person || "이름 없음";
+    who.textContent = labelNameOf(person.person) || "이름 없음";
 
     const dept = document.createElement("span");
     dept.className = "dept";
@@ -924,13 +925,41 @@ function renderTeamCalendar(calendar) {
   renderTeamDay(pick);
 }
 
+/**
+ * 팀 설정의 표기 이름(닉네임) → 실제 이름. 휴가는 실제 이름으로만 오므로
+ * 저장된 그룹에 닉네임이 섞여 있어도 실제 이름으로 바꿔서 거른다.
+ */
+function realNameOf(name) {
+  const raw = String(name || "").trim();
+  const key = normalizeName(raw);
+  if (!key) return raw;
+  for (const m of crewMembers) {
+    if (normalizeName(m.realName) === key) return m.realName;
+    if (normalizeName(m.name) === key) return m.realName || raw;
+  }
+  if (crewMe && normalizeName(crewMe.name) === key)
+    return crewMe.realName || raw;
+  return raw;
+}
+
+/** 실제 이름 → 화면에 쓸 표기 이름. 팀 설정에 닉네임이 있으면 그것을 보여 준다. */
+function labelNameOf(person) {
+  const raw = String(person || "").trim();
+  const key = normalizeName(raw);
+  if (!key) return raw;
+  const hit =
+    crewMembers.find((m) => normalizeName(m.realName) === key) ||
+    (crewMe && normalizeName(crewMe.realName) === key ? crewMe : null);
+  return displayName(hit) || raw;
+}
+
 /** 고른 부서만 남긴다. 'mine' 은 내 부서. */
 function filterLeaves(leaves, myDept) {
   if (teamDept === "all") return leaves;
   if (teamDept === "group") {
     if (!teamGroup.length) return leaves;
-    const set = new Set(teamGroup);
-    return leaves.filter((x) => set.has(x.person));
+    const set = new Set(teamGroup.map((n) => normalizeName(realNameOf(n))));
+    return leaves.filter((x) => set.has(normalizeName(x.person)));
   }
   const want = teamDept === "mine" ? myDept : teamDept;
   if (!want) return leaves; // 내 부서를 모르면 거르지 않는다
@@ -945,9 +974,9 @@ function fillDeptOptions(leaves, myDept) {
     counts.set(x.dept, (counts.get(x.dept) || 0) + 1);
   }
 
-  const groupSet = new Set(teamGroup);
+  const groupSet = new Set(teamGroup.map((n) => normalizeName(realNameOf(n))));
   const groupCount = teamGroup.length
-    ? leaves.filter((x) => groupSet.has(x.person)).length
+    ? leaves.filter((x) => groupSet.has(normalizeName(x.person))).length
     : 0;
 
   const quick = [{ value: "all", name: "전체 부서", count: leaves.length }];
@@ -1091,14 +1120,15 @@ function groupCandidates() {
 function renderGroupEditor() {
   const query = $("ge-search").value.trim();
   const all = groupCandidates();
-  const picked = new Set(teamGroup);
+  const picked = new Set(teamGroup.map((n) => normalizeName(realNameOf(n))));
   // 고른 사람은 검색과 무관하게 남겨 둔다. 해제하려다 놓치지 않게.
   const shown = query
     ? all.filter(
         (p) =>
           p.person.includes(query) ||
+          labelNameOf(p.person).includes(query) ||
           p.dept.includes(query) ||
-          picked.has(p.person),
+          picked.has(normalizeName(p.person)),
       )
     : all;
 
@@ -1124,7 +1154,10 @@ function renderGroupEditor() {
     const row = document.createElement("button");
     row.type = "button";
     row.className = "ge-row";
-    row.setAttribute("aria-pressed", String(picked.has(person.person)));
+    row.setAttribute(
+      "aria-pressed",
+      String(picked.has(normalizeName(person.person))),
+    );
 
     const box = document.createElement("span");
     box.className = "box";
@@ -1132,7 +1165,7 @@ function renderGroupEditor() {
 
     const nm = document.createElement("span");
     nm.className = "nm";
-    nm.textContent = person.person;
+    nm.textContent = labelNameOf(person.person);
 
     row.append(box, nm);
 
@@ -1151,8 +1184,11 @@ function renderGroupEditor() {
     row.addEventListener("click", () => {
       const on = row.getAttribute("aria-pressed") === "true";
       row.setAttribute("aria-pressed", String(!on));
+      // 그룹은 늘 실제 이름으로 저장한다 — 휴가가 실제 이름으로 오기 때문.
       teamGroup = on
-        ? teamGroup.filter((n) => n !== person.person)
+        ? teamGroup.filter(
+            (n) => normalizeName(realNameOf(n)) !== normalizeName(person.person),
+          )
         : [...teamGroup, person.person];
       chrome.storage.local.set({ [GROUP_KEY]: teamGroup });
       $("ge-count").textContent = String(teamGroup.length);
@@ -1264,8 +1300,10 @@ function setupTabs() {
 // ── 팀 출근 ──────────────────────────────────────────
 // 서버가 없어 각자 브라우저에 사번을 저장하고, 코드로 주고받아 등록한다.
 const CREW_KEY = "teamMembers";
-let crewMembers = []; // [{ name, empCd }]
-let crewMe = null; // 본인 { name, empCd } — 공유 코드 재료
+// realName 은 그룹웨어에 등록된 실제 이름 — 휴가·근태를 맞출 때 쓴다.
+// name 은 화면에 보일 표기 이름(닉네임). 비워 두면 실제 이름을 그대로 쓴다.
+let crewMembers = []; // [{ name, realName, empCd }]
+let crewMe = null; // 본인 { name, realName, empCd } — 공유 코드 재료
 
 function fmtHHMM(v) {
   const s = String(v || "").replace(/[^0-9]/g, "");
@@ -1308,7 +1346,7 @@ async function loadCrew() {
   // 오늘보다 미래로는 못 간다.
   $("crew-next").disabled = crewDate >= formatToday();
   const me = res.people.find((p) => p.isMe);
-  if (me) crewMe = { name: me.name, empCd: me.empCd };
+  if (me) crewMe = { name: me.name, realName: me.realName || me.name, empCd: me.empCd };
   renderCrew(res.people);
 }
 
@@ -1452,6 +1490,18 @@ function renderCrew(people) {
 }
 
 // ── 팀원 관리 ────────────────────────────────────────
+/** 예전에 저장된 { name, empCd } 는 그 이름이 실제 이름이었다. */
+function normalizeMember(m) {
+  const empCd = String(m?.empCd || "").trim();
+  const realName = String(m?.realName || m?.name || "").trim() || empCd;
+  return { realName, name: String(m?.name || "").trim() || realName, empCd };
+}
+
+/** 화면에 보일 이름. */
+function displayName(m) {
+  return String(m?.name || "").trim() || String(m?.realName || "").trim();
+}
+
 function saveCrew() {
   chrome.storage.local.set({ [CREW_KEY]: crewMembers });
 }
@@ -1470,10 +1520,10 @@ function addCrew(list) {
   for (const m of list) {
     if (!isValidEmpCd(m.empCd) || have.has(m.empCd)) continue;
     have.add(m.empCd);
-    crewMembers.push({
-      name: m.name || m.empCd,
-      empCd: String(m.empCd).trim(),
-    });
+    const empCd = String(m.empCd).trim();
+    const realName = String(m.name || "").trim() || empCd;
+    // 처음에는 표기 이름도 실제 이름과 같다. 필요하면 목록에서 고친다.
+    crewMembers.push({ name: realName, realName, empCd });
     added += 1;
   }
   if (added) saveCrew();
@@ -1490,26 +1540,46 @@ function renderCrewReg() {
   for (const m of crewMembers) {
     const li = document.createElement("li");
 
-    // 이름을 바로 고칠 수 있는 인라인 입력. 사번만 넣은 사람도 여기서 이름을 붙인다.
-    const nameless = m.name === m.empCd;
-    const nm = document.createElement("input");
-    nm.className = "nm-edit";
-    nm.type = "text";
-    nm.value = nameless ? "" : m.name;
-    nm.placeholder = "이름 입력";
-    nm.setAttribute("aria-label", `${m.empCd} 이름`);
-    const commit = () => {
-      const v = nm.value.trim();
-      const next = v || m.empCd; // 비우면 다시 사번(=이름 없음)
-      if (next === m.name) return;
-      m.name = next;
-      saveCrew();
+    // 이름을 바로 고칠 수 있는 인라인 입력.
+    // 실제 이름은 그룹웨어 조회·휴가 매칭에 쓰고, 표기 이름은 화면에만 쓴다.
+    const field = (key, placeholder, label, fallback, after) => {
+      const input = document.createElement("input");
+      input.className = `nm-edit is-${key}`;
+      input.type = "text";
+      const cur = String(m[key] || "").trim();
+      input.value = cur === m.empCd ? "" : cur;
+      input.placeholder = placeholder;
+      input.setAttribute("aria-label", `${m.empCd} ${label}`);
+      const commit = () => {
+        const next = input.value.trim() || fallback();
+        if (next === m[key]) return;
+        const before = m[key];
+        m[key] = next;
+        after?.(before, next);
+        saveCrew();
+      };
+      input.addEventListener("change", commit);
+      input.addEventListener("blur", commit);
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") input.blur();
+      });
+      return input;
     };
-    nm.addEventListener("change", commit);
-    nm.addEventListener("blur", commit);
-    nm.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") nm.blur();
-    });
+
+    // 실제 이름을 비우면 사번으로 되돌리고, 표기 이름을 비우면 실제 이름을 따른다.
+    const nick = field("name", "표기 이름 (선택)", "표기 이름", () => m.realName);
+    const real = field(
+      "realName",
+      "실제 이름",
+      "실제 이름",
+      () => m.empCd,
+      // 별칭을 따로 두지 않은 사람은 표기 이름도 같이 따라간다.
+      (before, next) => {
+        if (m.name !== before) return;
+        m.name = next;
+        nick.value = next === m.empCd ? "" : next;
+      },
+    );
 
     const cd = document.createElement("span");
     cd.className = "cd";
@@ -1526,7 +1596,7 @@ function renderCrewReg() {
       renderCrewReg();
     });
 
-    li.append(nm, cd, rm);
+    li.append(nick, real, cd, rm);
     host.appendChild(li);
   }
 }
@@ -1538,13 +1608,12 @@ function openCrewModal(open) {
   if (!show) return;
   crewMsg("", false);
   // 이름이 아직 안 잡혔으면(=사번과 같거나 '나') 코드에 이름이 안 들어간다. 경고를 띄운다.
+  // 코드에는 실제 이름을 담는다. 받는 쪽은 이 이름으로 휴가를 맞춘다.
+  const myRealName = crewMe?.realName || crewMe?.name || "";
   const nameReady =
-    crewMe &&
-    crewMe.name &&
-    crewMe.name !== "나" &&
-    crewMe.name !== crewMe.empCd;
+    crewMe && myRealName && myRealName !== "나" && myRealName !== crewMe.empCd;
   $("crew-mycode").value = crewMe
-    ? encodeMember(crewMe.name, crewMe.empCd)
+    ? encodeMember(myRealName, crewMe.empCd)
     : "먼저 팀근태 탭을 한 번 열어 주세요.";
   $("crew-code-warn").hidden = !crewMe || nameReady;
   $("crew-code-hint").hidden = !!crewMe && !nameReady;
@@ -2214,9 +2283,12 @@ $("crew-export").addEventListener("click", async () => {
   if (!crewMembers.length) return;
   // 나까지 넣어 팀 전체가 한 코드로 돌게 한다.
   const list = crewMe
-    ? [{ name: crewMe.name, empCd: crewMe.empCd }, ...crewMembers]
+    ? [{ name: crewMe.realName || crewMe.name, empCd: crewMe.empCd }, ...crewMembers]
     : crewMembers;
-  const code = encodeMembers(list);
+  // 팀 코드도 실제 이름으로. 표기 이름(닉네임)은 각자 브라우저에만 둔다.
+  const code = encodeMembers(
+    list.map((m) => ({ name: m.realName || m.name, empCd: m.empCd })),
+  );
   const label = $("crew-export-label");
   try {
     await navigator.clipboard.writeText(code);
@@ -2593,7 +2665,8 @@ $("save-emp").addEventListener("click", saveEmpCode);
 chrome.storage.local.get([DEPT_KEY, GROUP_KEY, CREW_KEY]).then((stored) => {
   if (typeof stored[DEPT_KEY] === "string") teamDept = stored[DEPT_KEY];
   if (Array.isArray(stored[GROUP_KEY])) teamGroup = stored[GROUP_KEY];
-  if (Array.isArray(stored[CREW_KEY])) crewMembers = stored[CREW_KEY];
+  if (Array.isArray(stored[CREW_KEY]))
+    crewMembers = stored[CREW_KEY].map(normalizeMember);
 });
 
 chrome.storage.local.get(VIEW_KEY).then(({ [VIEW_KEY]: saved }) => {

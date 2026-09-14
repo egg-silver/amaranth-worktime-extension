@@ -375,7 +375,16 @@ async function loadRoster({ force } = {}) {
   return { ok: true, people, fetchedAt: savedAt };
 }
 
-const TEAM_MEMBERS_KEY = "teamMembers"; // storage.local — 등록한 팀원 [{name, empCd}]
+// storage.local — 등록한 팀원 [{ name, realName, empCd }]
+// name 은 화면에 보일 표기 이름, realName 은 그룹웨어에 등록된 실제 이름이다.
+const TEAM_MEMBERS_KEY = "teamMembers";
+
+/** 예전에 저장된 { name, empCd } 는 그 이름이 실제 이름이었다. */
+function normalizeMember(m) {
+  const empCd = String(m?.empCd || "").trim();
+  const realName = String(m?.realName || m?.name || "").trim() || empCd;
+  return { realName, name: String(m?.name || "").trim() || realName, empCd };
+}
 
 /** 오늘 'yyyyMMdd'. */
 function todayStamp() {
@@ -419,11 +428,13 @@ async function loadTeamAttendance(reqDate) {
 
   const { [TEAM_MEMBERS_KEY]: saved } =
     await chrome.storage.local.get(TEAM_MEMBERS_KEY);
-  const members = Array.isArray(saved) ? saved : [];
+  const members = (Array.isArray(saved) ? saved : []).map(normalizeMember);
 
   // 본인을 맨 앞에. 등록 목록에 본인이 또 있으면 뺀다.
+  const myName = await resolveMyName(identity);
   const me = {
-    name: await resolveMyName(identity),
+    name: myName,
+    realName: myName,
     empCd: String(identity.empCd),
     isMe: true,
   };
@@ -455,7 +466,9 @@ async function loadTeamAttendance(reqDate) {
         });
         await writeCache(teamKey, list || []);
         return list || [];
-      } catch {
+      } catch (err) {
+        // 삼키면 "휴가가 없는 날" 과 구분이 안 된다. 로그는 남긴다.
+        console.warn("[팀근태] 근태캘린더 조회 실패", err);
         return [];
       }
     })(),
