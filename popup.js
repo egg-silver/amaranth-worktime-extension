@@ -45,8 +45,8 @@ const INCLUDE_TODAY_KEY = "includeToday";
 
 const $ = (id) => document.getElementById(id);
 
-const current = null; // 마지막으로 렌더한 status
-const currentFetchedAt = null;
+let current = null; // 마지막으로 렌더한 status
+let currentFetchedAt = null;
 let heroView = "today";
 let includeToday = true; // 오늘 근무 시간을 이번 달 계산에 포함할지
 let tickTimer = null;
