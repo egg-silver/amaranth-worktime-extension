@@ -763,3 +763,88 @@ test("그 주에 스마데가 있는지", () => {
   assert.equal(weekHasSmartDay("20260911"), true); // 금요일 당일
   assert.equal(weekHasSmartDay("20260914"), false); // 다음 주
 });
+
+test("주말·공휴일 근무는 보상휴가로 정산되므로 누적·소정에 넣지 않는다", () => {
+  // 10/1, 10/2, 10/6~8 평일 다섯 날 정시 근무. 10/3(공휴일·토), 10/9(한글날·금) 은 휴일.
+  const weekdays = ["20261001", "20261002", "20261005", "20261006", "20261007", "20261008"];
+  const base = weekdays.map((d) => workday(d, "0900", "1800", 480));
+  const opts = {
+    holidays: ["20261003", "20261009"],
+    today: "20261013",
+    nowMin: 8 * 60,
+    comeTm: "",
+    leaveTm: "",
+  };
+  const plain = computeStatus({ ...opts, rows: base });
+
+  // 토요일 근무에 서버가 소정을 붙여 줘도, 인정만 줘도 결과가 같아야 한다.
+  for (const standard of ["0", "480"]) {
+    const status = computeStatus({
+      ...opts,
+      rows: [
+        ...base,
+        row("20261010", {
+          comeTm: "1000",
+          leaveTm: "1500",
+          basicworkTm: "240",
+          workGroupStandardWorkTm: standard,
+        }),
+        row("20261009", {
+          comeTm: "1000",
+          leaveTm: "1200",
+          basicworkTm: "120",
+          workGroupStandardWorkTm: standard,
+        }),
+      ],
+    });
+    assert.equal(status.accumulated, plain.accumulated, `누적 그대로 (소정 ${standard})`);
+    assert.equal(status.monthStandard, plain.monthStandard, `월 소정 그대로 (소정 ${standard})`);
+    assert.equal(status.balance, plain.balance, `초과·부족 그대로 (소정 ${standard})`);
+    assert.equal(status.todayTarget, plain.todayTarget, `오늘 권장 그대로 (소정 ${standard})`);
+  }
+});
+
+test("오늘이 주말이면 일한 시간은 보여 주되 누적·퇴근 시각에는 쓰지 않는다", () => {
+  const base = ["20261001", "20261002", "20261005", "20261006", "20261007", "20261008"].map(
+    (d) => workday(d, "0900", "1800", 480),
+  );
+  const status = computeStatus({
+    rows: base,
+    holidays: ["20261003", "20261009"],
+    today: "20261010", // 토요일
+    nowMin: 15 * 60,
+    comeTm: "202610101000",
+    leaveTm: "",
+  });
+
+  assert.equal(status.offDay, true);
+  assert.equal(status.state, "working");
+  assert.equal(status.todayWorked, 4 * 60, "10~15시, 휴게 1시간 제외");
+  assert.equal(status.accumulated, 6 * 480, "평일 기록만");
+  assert.equal(status.accumulatedExclToday, 6 * 480);
+  assert.equal(status.balanceInclToday, status.balance);
+  assert.equal(status.estimatedLeave, null, "주말엔 퇴근 가능 시각을 내지 않는다");
+  assert.equal(status.dailyLeave, null);
+  assert.equal(status.todayRemainingByDaily, 0);
+  assert.equal(
+    status.todayTarget,
+    (status.monthStandard - status.confirmed) / status.remainingWorkDays,
+    "주말 근무가 남은 날 부담을 줄이지 않는다",
+  );
+});
+
+test("달력 합계에서 주말·공휴일 근무를 뺀다", () => {
+  const cal = buildCalendar({
+    ym: "202610",
+    rows: [
+      workday("20261008", "0900", "1800", 480),
+      row("20261009", { comeTm: "1000", leaveTm: "1200", basicworkTm: "120" }),
+      row("20261010", { comeTm: "1000", leaveTm: "1500", basicworkTm: "240" }),
+    ],
+    holidays: ["20261009"],
+    today: "20261013",
+  });
+  assert.equal(cal.totals.workedTotal, 480);
+  const sat = cal.weeks.flat().find((c) => c.date === "20261010");
+  assert.equal(sat.worked, 240, "칸에는 그대로 보인다");
+});

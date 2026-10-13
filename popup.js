@@ -166,6 +166,7 @@ function heroContent(status, view) {
     } else if (status.estimatedLeave != null) {
       parts.push(`${formatClock(status.estimatedLeave)} 퇴근 가능`);
     }
+    if (status.offDay) parts.push("휴일 근무는 누적 제외");
     sub = parts.join(" · ");
   }
   const leaveAt = status.estimatedLeave ?? status.dailyLeave;
@@ -2710,12 +2711,13 @@ tickTimer = setInterval(() => {
     intervals: current.restIntervals,
     exceptMin: current.restExceptMinutes,
   });
-  current.accumulated = current.confirmed + current.todayProgress;
+  // 주말·공휴일 근무는 보상휴가로 정산되므로 누적에 넣지 않는다.
+  current.accumulated =
+    current.confirmed + (current.offDay ? 0 : current.todayProgress);
   current.todayWorked = current.todayProgress;
-  current.todayRemainingByDaily = Math.max(
-    0,
-    current.dailyMinutes - current.todayProgress,
-  );
+  current.todayRemainingByDaily = current.offDay
+    ? 0
+    : Math.max(0, current.dailyMinutes - current.todayProgress);
   current.shortage = current.monthStandard - current.accumulated;
   current.progressRatio =
     current.monthStandard > 0
